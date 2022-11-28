@@ -276,7 +276,7 @@ def Theta_plus_SDP1(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq, 'L': np.zeros((n, n))})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -492,7 +492,7 @@ def DukanovicRendl(G, filename, limit=None, debug=False, model_out_dir='', model
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq, 'L': np.zeros((n, n))})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -919,7 +919,7 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq, 'L': np.zeros((dim, dim))})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -1008,7 +1008,7 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
 
 
-def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, model_out_dir='', model_out='adal', step=10000, dnn=False):
+def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, model_out_dir='', model_out='adal', step=10000):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
     # Gruber and Rendl
     if debug:
@@ -1039,24 +1039,6 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
         _A = lil_matrix((dim**2, step))
         _b = np.zeros((step, 1))
         p = 0
-
-        # x_ij > 0 , for all (i, j) not in E
-        if not dnn:
-            for i, j in G_complement_edges:
-                # proceeding column wise
-                i1 = (i + 1)*dim + (j + 1) 
-                i2 = (j + 1)*dim + (i + 1)
-                _A[i1, p] = -.5
-                _A[i2, p] = -.5
-                mleq += 1
-                l += 1
-                p += 1
-                if p == step:
-                    A = hstack([A, _A])
-                    b = np.vstack([b, _b])
-                    _A = lil_matrix((dim**2, step))
-                    _b = np.zeros((step, 1))
-                    p = 0
 
         # x_ik + x_jk <  x_kk , for all (i, j) in E, k \not= i, j
         # x_ii + x_jj + x_kk < 1 + x_ik + x_jk , for all (i, j) in E, k \not= i, j
@@ -1232,7 +1214,7 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq, 'L': np.zeros((dim, dim))})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -1455,7 +1437,7 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
 
 
-def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000, dnn=False):
+def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
     if debug:
         print('LovaszSchrijver')
@@ -1486,24 +1468,6 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
         _A = lil_matrix((dim**2, step))
         _b = np.zeros((step, 1))
         p = 0
-        
-        # x_ij > 0 , for all (i, j) not in E
-        if not dnn:
-            for i, j in G_complement_edges:
-                # proceeding column wise
-                i1 = (i + 1)*dim + (j + 1) 
-                i2 = (j + 1)*dim + (i + 1)
-                _A[i1, p] = -.5
-                _A[i2, p] = -.5
-                mleq += 1
-                l += 1
-                p += 1
-                if p == step:
-                    A = hstack([A, _A])
-                    b = np.vstack([b, _b])
-                    _A = lil_matrix((dim**2, step))
-                    _b = np.zeros((step, 1))
-                    p = 0
 
         for i, j in G.edges():
             for k in G.nodes():
@@ -1616,7 +1580,7 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq,  'L': np.zeros((dim, dim))})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
