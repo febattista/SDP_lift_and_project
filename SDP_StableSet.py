@@ -5,6 +5,7 @@ import pandas as pd
 import gurobipy as gb
 import numpy as np
 import networkx as nx
+# import mosek
 import random
 import math
 from scipy.sparse import lil_matrix, vstack, hstack, save_npz, csc_matrix, lil_matrix
@@ -50,6 +51,52 @@ def NSTAB(G, model_name, dir_path=''):
     nod.update()
     nod.write(path)
     return nod
+
+
+def NQSTAB(G, model_name, dir_path='', silent=True, debug=False, keep_user_cuts=False):
+    graph_path = os.path.join(dir_path, model_name + '.stb')
+
+    write_graph_to_dimacs(G, graph_path)
+
+    # Compute Nodal Formulation
+
+    # Greedy, Reduction, Active, Nodal
+    command = 'python ./Nodal/cliqueform.py -cl g -a -u -n -o ./%s ./%s'
+
+    # Reduction, Nodal
+    # command = 'python ./Nodal/cliqueform.py -cl e -n -o ./%s ./%s'
+
+    if silent:
+        subprocess.run(command % (dir_path, graph_path), shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    else:
+        subprocess.run(command % (dir_path, graph_path), shell=True)
+
+    # Remove User Cut line from the output
+
+    # Greedy, Reduction, Active, Nodal
+    model_path = os.path.join(dir_path, model_name + '_greedy_red_active_nod.lp')
+
+    # Reduction, Nodal
+    # model_path = os.path.join(dir_path, model_name + '_empty_red_nod.lp')
+
+    with open(model_path, 'r') as f: 
+        lines = f.readlines()
+    with open(model_path, "w") as f:
+        usr_cuts = False
+        for line in lines:
+            if line.strip("\n") == "User Cuts":
+                if not keep_user_cuts:
+                    usr_cuts = True
+                continue
+            if not keep_user_cuts and line.strip("\n") == "Bounds":
+                usr_cuts = False
+            if not usr_cuts:
+                f.write(line) 
+
+    # Return the gurobi model
+
+    return read_model_from_file(model_path)
+
 
 def Theta_SDP1(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
@@ -165,8 +212,8 @@ def Theta_SDP1(G, filename, limit=None, debug=False, model_out_dir='', model_out
 
         # tr(X) = 1
         for i in G.nodes():
-        	i1 = ((i + 1)*(i))/2 + (i)
-        	_At[i1, p] = 1.
+            i1 = ((i + 1)*(i))/2 + (i)
+            _At[i1, p] = 1.
 
         _b[p] = 1.
         l += 1
@@ -276,7 +323,7 @@ def Theta_plus_SDP1(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq, 'L': np.zeros((n, n))})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -492,7 +539,7 @@ def DukanovicRendl(G, filename, limit=None, debug=False, model_out_dir='', model
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq, 'L': np.zeros((n, n))})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : J, 'mleq' : mleq})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -919,7 +966,7 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq, 'L': np.zeros((dim, dim))})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -953,6 +1000,7 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
         for i, j in G.edges():
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 2)*(ii + 1))/2 + jj + 1 
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             p += 1
             l += 1
@@ -979,9 +1027,11 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
         # Add constraint: X_ii = X_0i = X_i0 for i in V
         for i in G.nodes():
             idx = ((i + 2)*(i + 1))/2 
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             
             idx = ((i + 2)*(i + 1))/2 + (i + 1)
+            idx = int(idx)
             _At[idx, p] = -1.
             p += 1
             l += 1
@@ -1008,7 +1058,7 @@ def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
 
 
-def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, model_out_dir='', model_out='adal', step=10000):
+def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, model_out_dir='', model_out='adal', step=10000, dnn=False):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
     # Gruber and Rendl
     if debug:
@@ -1039,6 +1089,24 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
         _A = lil_matrix((dim**2, step))
         _b = np.zeros((step, 1))
         p = 0
+
+        # x_ij > 0 , for all (i, j) not in E
+        if not dnn:
+            for i, j in G_complement_edges:
+                # proceeding column wise
+                i1 = (i + 1)*dim + (j + 1) 
+                i2 = (j + 1)*dim + (i + 1)
+                _A[i1, p] = -.5
+                _A[i2, p] = -.5
+                mleq += 1
+                l += 1
+                p += 1
+                if p == step:
+                    A = hstack([A, _A])
+                    b = np.vstack([b, _b])
+                    _A = lil_matrix((dim**2, step))
+                    _b = np.zeros((step, 1))
+                    p = 0
 
         # x_ik + x_jk <  x_kk , for all (i, j) in E, k \not= i, j
         # x_ii + x_jj + x_kk < 1 + x_ik + x_jk , for all (i, j) in E, k \not= i, j
@@ -1214,7 +1282,7 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq, 'L': np.zeros((dim, dim))})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -1255,16 +1323,19 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
                 if k != i and k != j:
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -1.
 
                     # x_ik
                     ii, kk = sorted([i, k], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*.5
 
                     # x_jk
                     jj, kk = sorted([j, k], reverse=True)
                     idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*.5
 
                     p1 += 1
@@ -1278,24 +1349,29 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
 
                     # x_ii
                     idx = ((i + 2)*(i + 1))/2 + i + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_jj
                     idx = ((j + 2)*(j + 1))/2 + j + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_ik
                     ii, kk = sorted([i, k], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -_2*.5
 
                     # x_jk
                     jj, kk = sorted([j, k], reverse=True)
                     idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -_2*.5
 
                     _u[p1] = 1.
@@ -1315,21 +1391,25 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             if len(G.subgraph((i, j, k)).edges()) == 0:
                 # x_kk
                 idx = ((k + 2)*(k + 1))/2 + k + 1
+                idx = int(idx)
                 _Bt[idx, p1] = -1.
 
                 # x_ik
                 ii, kk = sorted([i, k], reverse=True)
                 idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                idx = int(idx)
                 _Bt[idx, p1] = _2*.5
 
                 # x_jk
                 jj, kk = sorted([j, k], reverse=True)
                 idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                idx = int(idx)
                 _Bt[idx, p1] = _2*.5
 
                 # x_ij
                 ii, jj = sorted([i, j], reverse=True)
                 idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+                idx = int(idx)
                 _Bt[idx, p1] = -_2*.5
 
                 p1 += 1
@@ -1343,29 +1423,35 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
 
                 # x_ii
                 idx = ((i + 2)*(i + 1))/2 + i + 1
+                idx = int(idx)
                 _Bt[idx, p1] = 1.
 
                 # x_jj
                 idx = ((j + 2)*(j + 1))/2 + j + 1
+                idx = int(idx)
                 _Bt[idx, p1] = 1.
 
                 # x_kk
                 idx = ((k + 2)*(k + 1))/2 + k + 1
+                idx = int(idx)
                 _Bt[idx, p1] = 1.
 
                 # x_ik
                 ii, kk = sorted([i, k], reverse=True)
                 idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                idx = int(idx)
                 _Bt[idx, p1] = -_2*.5
 
                 # x_jk
                 jj, kk = sorted([j, k], reverse=True)
                 idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                idx = int(idx)
                 _Bt[idx, p1] = -_2*.5
 
                 # x_ij
                 ii, jj = sorted([i, j], reverse=True)
                 idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+                idx = int(idx)
                 _Bt[idx, p1] = -_2*.5
 
                 _u[p1] = 1.
@@ -1390,6 +1476,7 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             # x_ij
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+            idx = int(idx)
             _At[idx, p] = _2*.5
             
             p += 1
@@ -1405,9 +1492,11 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
         # Add constraint: X_ii = X_0i = X_i0 for i in V
         for i in G.nodes():
             idx = ((i + 2)*(i + 1))/2 
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             
             idx = ((i + 2)*(i + 1))/2 + (i + 1)
+            idx = int(idx)
             _At[idx, p] = -1.
             p += 1
             l+=1
@@ -1437,7 +1526,7 @@ def GruberRendl(G, filename, limit=None, export_matrices=False, debug=False, mod
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
 
 
-def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
+def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000, dnn=False):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
     if debug:
         print('LovaszSchrijver')
@@ -1468,6 +1557,24 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
         _A = lil_matrix((dim**2, step))
         _b = np.zeros((step, 1))
         p = 0
+        
+        # x_ij > 0 , for all (i, j) not in E
+        if not dnn:
+            for i, j in G_complement_edges:
+                # proceeding column wise
+                i1 = (i + 1)*dim + (j + 1) 
+                i2 = (j + 1)*dim + (i + 1)
+                _A[i1, p] = -.5
+                _A[i2, p] = -.5
+                mleq += 1
+                l += 1
+                p += 1
+                if p == step:
+                    A = hstack([A, _A])
+                    b = np.vstack([b, _b])
+                    _A = lil_matrix((dim**2, step))
+                    _b = np.zeros((step, 1))
+                    p = 0
 
         for i, j in G.edges():
             for k in G.nodes():
@@ -1580,7 +1687,7 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
             print('Dimension of matrix variable: %d' % dim)
             print('Number of constraints: %d' % l)
         
-        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq,  'L': np.zeros((dim, dim))})
+        io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'A' : A, 'b' : b, 'C' : C, 'mleq' : mleq})
         # Exporting the model to output file
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
@@ -1621,16 +1728,19 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
                 if k != i and k != j:
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -1.
 
                     # x_ik
                     ii, kk = sorted([i, k], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*.5
 
                     # x_jk
                     jj, kk = sorted([j, k], reverse=True)
                     idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*.5
 
                     p1 += 1
@@ -1644,24 +1754,29 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
 
                     # x_ii
                     idx = ((i + 2)*(i + 1))/2 + i + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_jj
                     idx = ((j + 2)*(j + 1))/2 + j + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = 1.
 
                     # x_ik
                     ii, kk = sorted([i, k], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -_2*.5
 
                     # x_jk
                     jj, kk = sorted([j, k], reverse=True)
                     idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = -_2*.5
 
                     _u[p1] = 1.
@@ -1686,6 +1801,7 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
             # x_ij
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+            idx = int(idx)
             _At[idx, p] = _2*.5
             
             p += 1
@@ -1701,9 +1817,11 @@ def LovaszSchrijver(G, filename, limit=None, debug=False, model_out_dir='', mode
         # Add constraint: X_ii = X_0i = X_i0 for i in V
         for i in G.nodes():
             idx = ((i + 2)*(i + 1))/2 
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             
             idx = ((i + 2)*(i + 1))/2 + (i + 1)
+            idx = int(idx)
             _At[idx, p] = -1.
             p += 1
             l+=1
@@ -1956,6 +2074,7 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
                     # x_ij
                     ii, jj = sorted([i, j], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*0.5
                 p1 += 1
                 l+=1
@@ -1973,12 +2092,14 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
                     neighbors_but_k = [n for n in G.neighbors(i) if n != k]
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = float(1 - alpha[i])
                     for j in neighbors_but_k:
                         if (j, k) not in G.edges():
                             # x_jk
                             jj, kk = sorted([k, j], reverse=True)
                             idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                            idx = int(idx)
                             _Bt[idx, p1] = _2*.5
                     p1 += 1
                     l+=1
@@ -1996,10 +2117,12 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
                 for k in not_neighbors:
                     # x_kk
                     idx = ((k + 2)*(k + 1))/2 + k + 1
+                    idx = int(idx)
                     _Bt[idx, p1] =  float(-alpha[i])
                     # x_ik
                     ii, kk = sorted([k, i], reverse=True)
                     idx = ((ii + 2)*(ii + 1))/2 + kk + 1
+                    idx = int(idx)
                     _Bt[idx, p1] = _2*(alpha[i]/2)
 
                     for j in G.neighbors(i):
@@ -2007,6 +2130,7 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
                             # x_jk
                             jj, kk = sorted([k, j], reverse=True)
                             idx = ((jj + 2)*(jj + 1))/2 + kk + 1
+                            idx = int(idx)
                             _Bt[idx, p1] = _2*0.5
                     p1 += 1
                     l+=1
@@ -2034,9 +2158,11 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
         # Add constraint: X_ii = X_0i = X_i0 for i in V
         for i in G.nodes():
             idx = ((i + 2)*(i + 1))/2 
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             
             idx = ((i + 2)*(i + 1))/2 + (i + 1)
+            idx = int(idx)
             _At[idx, p] = -1.
             p += 1
             l +=1
@@ -2066,3 +2192,85 @@ def M_plus_NOD(G, filename, limit=None, debug=False, model_out_dir='', model_out
         if debug:
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
     
+def alt_TH_plus(G, filename, limit=None, model_out_dir='', step=10000, debug=True):
+    if debug:
+        print('alt_TH_plus')
+        print('Reading the model...')
+    start_time = time.time()
+    n = len(G.nodes())
+    m = len(G.edges())
+
+    dim = int(((n + 1) * (n + 2))/2)
+    
+    l = 0
+
+    _2 = np.sqrt(2)
+
+    # Objective function (minimization problem)
+    C = lil_matrix((n + 1, n + 1))
+    for i in range(n):
+        C[i + 1, i + 1] = -1.
+
+    # A will be the output, _A is used just as temporary var
+    # each step _A will be concatenated to A
+    At = lil_matrix((dim, 0))
+    b = np.zeros((0, 1))
+
+    _At = lil_matrix((dim, step))
+    _b = np.zeros((step, 1))
+    p = 0
+
+    # \sum{x_{ij}} = 0
+    for i, j in G.edges():
+        ii, jj = sorted([i, j], reverse=True)
+        idx = ((ii + 2)*(ii + 1))/2 + jj + 1
+        idx = int(idx)
+        _At[idx, p] = _2*0.5
+    p += 1
+    l += 1
+
+    # Add constraint: X_00 = 1
+    _At[0, p] = 1.
+    _b[p] = 1.
+    p += 1
+    l+=1
+
+    if p == step:
+        At = hstack([At, _At])
+        b = np.vstack([b, _b])
+        _At = lil_matrix((dim, step))
+        _b = np.zeros((step, 1))
+        p = 0
+
+    # Add constraint: X_ii = X_0i = X_i0 for i in V
+    for i in G.nodes():
+        idx = ((i + 2)*(i + 1))/2 
+        idx = int(idx)
+        _At[idx, p] = _2*0.5
+        
+        idx = ((i + 2)*(i + 1))/2 + (i + 1)
+        idx = int(idx)
+        _At[idx, p] = -1.
+        p += 1
+        l+=1
+        if p == step:
+            At = hstack([At, _At])
+            b = np.vstack([b, _b])
+            _A = lil_matrix((dim, step))
+            _b = np.zeros((step, 1))
+            p = 0
+    
+    if p > 0:
+        At = hstack([At,  _At.tocsc()[:, :p]])
+        b = np.vstack([b, _b[:p]])
+
+    elapsed_time = time.time() - start_time
+    if debug:
+        print('Finished! Time elapsed: %.2f' % elapsed_time)
+        print('Dimension of matrix variable: %d' % (n + 1))
+        print('Number of constraints: %d' % l)
+    
+    io.savemat(os.path.join(model_out_dir, filename) + '.mat', {'At' : At, 'b' : b, 'C' : C, 'L' : 0., 's' : float(n + 1)})
+    # Exporting the model to output file
+    if debug:
+        print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')

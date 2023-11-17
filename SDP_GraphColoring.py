@@ -2,9 +2,10 @@
 from graph import *
 import time
 import pandas as pd
-import gurobipy as gb
+#import gurobipy as gb
 import numpy as np
 import networkx as nx
+#import mosek
 import random
 import math
 from scipy.sparse import lil_matrix, vstack, hstack, save_npz, csc_matrix, lil_matrix
@@ -15,7 +16,7 @@ import subprocess
 import os
 
 def mat_idx(i, j):
-    return ((i + 1)*(i))/2 + (j) if i >= j else ((j + 1)*(j))/2 + (i)
+    return int(((i + 1)*(i))/2 + (j) if i >= j else ((j + 1)*(j))/2 + (i))
 
 def sp_unique(sp_matrix, axis=0):
     ''' Returns a sparse matrix with the unique rows (axis=0)
@@ -230,6 +231,7 @@ def Theta(G, filename, limit=None, debug=False, model_out_dir='', model_out='ada
         for i, j in G.edges():
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 1)*(ii))/2 + jj
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             _b[p] = -1.
             p += 1
@@ -299,6 +301,22 @@ def Theta_plus(G, filename, limit=None, debug=False, model_out_dir='', model_out
         for i, j in G_complement_edges:
         	L[i, j] = -1.
         	L[j, i] = -1.
+        # z_ij >= -1 , for all (i, j) not in E
+        # for i, j in G_complement_edges:
+        #     i1 = (i)*dim + (j) 
+        #     i2 = (j)*dim + (i)
+        #     _A[i1, p] = -.5
+        #     _A[i2, p] = -.5
+        #     _b[p] = 1.
+        #     mleq += 1
+        #     l += 1
+        #     p += 1
+        #     if p == step:
+        #         A = hstack([A, _A])
+        #         b = np.vstack([b, _b])
+        #         _A = lil_matrix((dim**2, step))
+        #         _b = np.zeros((step, 1))
+        #         p = 0
 
         # z_ii - t = -1, for all i in V
         for i in G.nodes():
@@ -400,6 +418,7 @@ def Theta_plus(G, filename, limit=None, debug=False, model_out_dir='', model_out
         for i, j in G.edges():
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 1)*(ii))/2 + jj
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             _b[p] = -1.
             p += 1
@@ -417,6 +436,21 @@ def Theta_plus(G, filename, limit=None, debug=False, model_out_dir='', model_out
         for i, j in G_complement_edges:
             L[i, j] = -1.
             L[j, i] = -1.
+
+        # for i, j in G_complement_edges:
+        #     ii, jj = sorted([i, j], reverse=True)
+        #     idx = ((ii + 1)*(ii))/2 + jj
+        #     idx = int(idx)
+        #     _Bt[idx, p1] = -_2*0.5
+        #     _u[p1] = 1.
+        #     p1 += 1
+        #     l += 1
+        #     if p1 == step:
+        #         Bt = hstack([Bt, _Bt])
+        #         u = np.vstack([u, _u])
+        #         _Bt = lil_matrix((dim, step))
+        #         _u = np.zeros((step, 1))
+        #         p1 = 0
         
         if p > 0:
             At = hstack([At,  _At.tocsc()[:, :p]])
@@ -479,6 +513,38 @@ def Theta_plus_triangle(G, filename, limit=None, debug=False, model_out_dir='', 
         _b = np.zeros((step, 1))
         p = 0
 
+        # z_ij + z_ik - z_jk - t <= -1, for ij, jk not in E [as modeled in DukanovicRendl2005 (7)]
+        # for (i, j, k) in [i for i in  itertools.combinations(G.nodes(), 3)]:
+        #     if set((i, j)) in G_complement_edges and set((j, k)) in G_complement_edges:
+        #         # z_ij
+        #         i1 = (i)*dim + (j) 
+        #         i2 = (j)*dim + (i)
+        #         _A[i1, p] = .5
+        #         _A[i2, p] = .5
+        #         # z_jk
+        #         i1 = (j)*dim + (k) 
+        #         i2 = (k)*dim + (j)
+        #         _A[i1, p] = -.5
+        #         _A[i2, p] = -.5
+        #         # z_ik
+        #         i1 = (k)*dim + (i) 
+        #         i2 = (i)*dim + (k)
+        #         _A[i1, p] = .5
+        #         _A[i2, p] = .5
+        #         # t
+        #         i1 = (n)*dim + (n)
+        #         _A[i1, p] = -1.
+        #         _b[p] = -1.
+        #         mleq += 1
+        #         l += 1
+        #         p += 1
+        #         if p == step:
+        #             A = hstack([A, _A])
+        #             b = np.vstack([b, _b])
+        #             _A = lil_matrix((dim**2, step))
+        #             _b = np.zeros((step, 1))
+        #             p = 0
+
         # z_ij + z_ik - z_jk - t <= -1, for i, j, k in V [as modeled in DAM (17)]
         try:
             if sample:
@@ -524,6 +590,22 @@ def Theta_plus_triangle(G, filename, limit=None, debug=False, model_out_dir='', 
         for i, j in G_complement_edges:
             L[i, j] = -1.
             L[j, i] = -1.
+
+        # for i, j in G_complement_edges:
+        #     i1 = (i)*dim + (j) 
+        #     i2 = (j)*dim + (i)
+        #     _A[i1, p] = -.5
+        #     _A[i2, p] = -.5
+        #     _b[p] = 1.
+        #     mleq += 1
+        #     l += 1
+        #     p += 1
+        #     if p == step:
+        #         A = hstack([A, _A])
+        #         b = np.vstack([b, _b])
+        #         _A = lil_matrix((dim**2, step))
+        #         _b = np.zeros((step, 1))
+        #         p = 0
 
         # z_ii - t = -1, for all i in V
         for i in G.nodes():
@@ -625,6 +707,7 @@ def Theta_plus_triangle(G, filename, limit=None, debug=False, model_out_dir='', 
         for i, j in G.edges():
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 1)*(ii))/2 + jj
+            idx = int(idx)
             _At[idx, p] = _2*0.5
             _b[p] = -1.
             p += 1
@@ -643,6 +726,53 @@ def Theta_plus_triangle(G, filename, limit=None, debug=False, model_out_dir='', 
             L[i, j] = -1.
             L[j, i] = -1.
 
+        # for i, j in G_complement_edges:
+        #     ii, jj = sorted([i, j], reverse=True)
+        #     idx = ((ii + 1)*(ii))/2 + jj
+        #     _Bt[idx, p1] = -_2*0.5
+        #     _u[p1] = 1.
+        #     p1 += 1
+        #     l += 1
+        #     if p1 == step:
+        #         Bt = hstack([Bt, _Bt])
+        #         u = np.vstack([u, _u])
+        #         _Bt = lil_matrix((dim, step))
+        #         _u = np.zeros((step, 1))
+        #         p1 = 0
+
+        # z_ij + z_ik - z_jk - t <= -1 , for all (i, j, k) stable
+        # for (i, j, k) in [i for i in  itertools.combinations(G.nodes(), 3)]:
+        #     if set((i, j)) in G_complement_edges and set((j, k)) in G_complement_edges:
+        #         # z_ik
+        #         ii, kk = sorted([i, k], reverse=True)
+        #         idx = ((ii + 1)*(ii))/2 + kk
+        #         _Bt[idx, p1] = _2*.5
+ 
+        #         # z_jk
+        #         jj, kk = sorted([j, k], reverse=True)
+        #         idx = ((jj + 1)*(jj))/2 + kk
+        #         _Bt[idx, p1] = -_2*.5
+ 
+        #         # z_ij
+        #         ii, jj = sorted([i, j], reverse=True)
+        #         idx = ((ii + 1)*(ii))/2 + jj
+        #         _Bt[idx, p1] = _2*.5
+ 
+        #         # t
+        #         idx = ((n + 1)*(n))/2 + n
+        #         _Bt[idx, p1] = -1.
+ 
+        #         _u[p1] = -1.
+ 
+        #         p1 += 1
+        #         l += 1
+        #         if p1 == step:
+        #             Bt = hstack([Bt, _Bt])
+        #             u = np.vstack([u, _u])
+        #             _Bt = lil_matrix((dim, step))
+        #             _u = np.zeros((step, 1))
+        #             p1 = 0
+
         # z_ij + z_ik - z_jk - t <= -1 , for all (i, j, k) stable
         try:
             if sample:
@@ -656,20 +786,24 @@ def Theta_plus_triangle(G, filename, limit=None, debug=False, model_out_dir='', 
             # z_ik
             ii, kk = sorted([i, k], reverse=True)
             idx = ((ii + 1)*(ii))/2 + kk
+            idx = int(idx)
             _Bt[idx, p1] = _2*.5
 
             # z_jk
             jj, kk = sorted([j, k], reverse=True)
             idx = ((jj + 1)*(jj))/2 + kk
+            idx = int(idx)
             _Bt[idx, p1] = -_2*.5
 
             # z_ij
             ii, jj = sorted([i, j], reverse=True)
             idx = ((ii + 1)*(ii))/2 + jj
+            idx = int(idx)
             _Bt[idx, p1] = _2*.5
 
             # t
             idx = ((n + 1)*(n))/2 + n
+            idx = int(idx)
             _Bt[idx, p1] = -1.
 
             _u[p1] = -1.
@@ -753,7 +887,7 @@ def M_plus_REP_GCP(G, filename, model_out_dir='', step=10000, debug=False):
     _u = np.zeros((step, 1))
     _p1 = 0
     
-    # (1.1) - (1.3)
+    # (1.1) - (1.3)
     for v in G.nodes():
         for i in G.nodes():
             for j in itertools.chain([i], G_c.neighbors(i)):
@@ -834,49 +968,49 @@ def M_plus_REP_GCP(G, filename, model_out_dir='', step=10000, debug=False):
                         _p1 = 0
     
     # (2.2)
-    for uu in G.nodes():
-        for v,w in G.subgraph(itertools.chain(G_c.neighbors(uu), [uu])).edges():
-            for i in G.nodes():
-                for j in itertools.chain([i], G_c.neighbors(i)):
-                    # x_ijx_uu
-                    _id1 = mapping[i, j]
-                    _id2 = mapping[uu, uu]
-                    i1 = mat_idx(_id1, _id2)
-                    _Bt[i1, _p1] -= _2*.5 if _id1 != _id2 else 1.
-                    
-                    # x_ijx_uw
-                    _id2 = mapping[uu, w]
-                    i2 = mat_idx(_id1, _id2)
-                    _Bt[i2, _p1] += _2*.5 if _id1 != _id2 else 1.
-                    
-                    # x_ijx_uv
-                    _id2 = mapping[uu, v]
-                    i3 = mat_idx(_id1, _id2)
-                    _Bt[i3, _p1] += _2*.5 if _id1 != _id2 else 1.
-                    
-                    # x_uu
-                    _id1 = mapping[uu, uu]
-                    i4 = mat_idx(_id1, _id1)
-                    _Bt[i4, _p1] += 1.
-                    
-                    # x_uw
-                    _id1 = mapping[uu, w]
-                    i5 = mat_idx(_id1, _id1)
-                    _Bt[i5, _p1] -= 1.
-                    
-                    # x_uv
-                    _id1 = mapping[uu, v]
-                    i6 = mat_idx(_id1, _id1)
-                    _Bt[i6, _p1] -= 1.
-                    
-                    _p1 += 1
-                    _l += 1
-                    if _p1 == step:
-                        Bt = hstack([Bt, _Bt])
-                        u = np.vstack([u, _u])
-                        _Bt = lil_matrix((dim, step))
-                        _u = np.zeros((step, 1))
-                        _p1 = 0
+    #for uu in G.nodes():
+    #    for v,w in G.subgraph(itertools.chain(G_c.neighbors(uu), [uu])).edges():
+    #        for i in G.nodes():
+    #            for j in itertools.chain([i], G_c.neighbors(i)):
+    #                # x_ijx_uu
+    #                _id1 = mapping[i, j]
+    #                _id2 = mapping[uu, uu]
+    #                i1 = mat_idx(_id1, _id2)
+    #                _Bt[i1, _p1] -= _2*.5 if _id1 != _id2 else 1.
+    #                
+    #                # x_ijx_uw
+    #                _id2 = mapping[uu, w]
+    #                i2 = mat_idx(_id1, _id2)
+    #                _Bt[i2, _p1] += _2*.5 if _id1 != _id2 else 1.
+    #                
+    #                # x_ijx_uv
+    #                _id2 = mapping[uu, v]
+    #                i3 = mat_idx(_id1, _id2)
+    #                _Bt[i3, _p1] += _2*.5 if _id1 != _id2 else 1.
+    #                
+    #                # x_uu
+    #                _id1 = mapping[uu, uu]
+    #                i4 = mat_idx(_id1, _id1)
+    #                _Bt[i4, _p1] += 1.
+    #                
+    #                # x_uw
+    #                _id1 = mapping[uu, w]
+    #                i5 = mat_idx(_id1, _id1)
+    #                _Bt[i5, _p1] -= 1.
+    #                
+    #                # x_uv
+    #                _id1 = mapping[uu, v]
+    #                i6 = mat_idx(_id1, _id1)
+    #                _Bt[i6, _p1] -= 1.
+    #                
+    #                _p1 += 1
+    #                _l += 1
+    #                if _p1 == step:
+    #                    Bt = hstack([Bt, _Bt])
+    #                    u = np.vstack([u, _u])
+    #                    _Bt = lil_matrix((dim, step))
+    #                    _u = np.zeros((step, 1))
+    #                    _p1 = 0
                     
     # Add non-negativity on Y
     L = 0.
@@ -896,6 +1030,7 @@ def M_plus_REP_GCP(G, filename, model_out_dir='', step=10000, debug=False):
     # Add constraint: Y_ii = Y_0i = Y_i0 
     for i in range(_n):
         idx = mat_idx(i + 1, 0)
+        
         _At[idx, _p] = 1
         idx = mat_idx(i + 1, i + 1)
         _At[idx, _p] = -1
