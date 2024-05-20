@@ -1,3 +1,6 @@
+
+addpath 'MatlabModules';
+display(path);
 %%% Read parameters from parameters.py
 setupParameters;
 

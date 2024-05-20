@@ -3,8 +3,7 @@ clear
 
 matParams = struct();
 
-restoredefaultpath;
-addpath(genpath(strcat(pwd, '/SDPNAL+v1.0')),path);
+addpath(genpath(fullfile('..', 'SDPNAL+v1.0')),path);
 % SDPNAL Options
 matParams.sdpnal = SDPNALplus_parameters;
 
