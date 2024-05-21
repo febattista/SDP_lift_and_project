@@ -374,7 +374,7 @@ def ADMM_3b(A, b, C, sigma=1., Y=None, Z=None, S=None, norm_bound=None, options=
                 if debug:
                     print('Time limit exceeded')
 
-            if patience <= 0:
+            if patience <= 0 and debug:
                 print('No more patience!')
 
             pruned = True if can_be_pruned(err_bound, target) else False

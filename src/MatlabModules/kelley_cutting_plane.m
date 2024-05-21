@@ -11,20 +11,20 @@ function [nod_curr_obj, nod_tot_cuts, nod_time] = kelley_cutting_plane(model_fol
 splitted = Params.DO_SPLIT;
 OPTIONS = Params.sdpnal;
 
-if isfield(Params, 'EPSILON')
-    epsilon = Params.EPSILON;
+if isfield(Params, 'CUTTING_PLANE_EPSILON')
+    epsilon = Params.CUTTING_PLANE_EPSILON;
 else
     epsilon = 1e-3;
 end
 
-if isfield(Params, 'TAILOFF')
-    delta = Params.TAILOFF;
+if isfield(Params, 'CUTTING_PLANE_TAILOFF')
+    delta = Params.CUTTING_PLANE_TAILOFF;
 else
     delta = 1e-1;
 end
 
-if isfield(Params, 'MAX_CUTS_PER_ITER')
-    max_c = Params.MAX_CUTS_PER_ITER;
+if isfield(Params, 'CUTTING_PLANE_MAX_CUTS_PER_ITER')
+    max_c = Params.CUTTING_PLANE_MAX_CUTS_PER_ITER;
 else
     max_c = 1000;
 end

@@ -605,7 +605,7 @@ def Theta_SDP(G, filename, limit=None, debug=False, model_out_dir='', model_out=
             print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
 
 
-def Theta_plus_SDP2(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
+def Theta_plus_SDP(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
     assert type(model_out) == type('') and model_out.lower() in {'adal', 'sdpnal'}, 'Supported models : adal, sdpnal'
     if debug:
         print('Theta_plus_SDP2')

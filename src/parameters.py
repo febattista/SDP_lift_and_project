@@ -16,8 +16,10 @@
 #   └── models/       : SDP models in .mat files
 #                       (created during SDP formulations)
 datasets = {
-     'smallDIMACS' : '/Users/feb223/projects/SDP_MSSP_GCP/data/StableSets/smallDIMACS',
-     'smallRandom' : '/Users/feb223/projects/SDP_MSSP_GCP/data/StableSets/smallRandom'
+     'smallDIMACS' : '../data/StableSets/smallDIMACS',
+     'smallRandom' : '../data/StableSets/smallRandom',
+          # 'DIMACS' : '../data/StableSets/DIMACS',
+          # 'Random' : '../data/StableSets/Random'
 }
 
 # -----------------------------------------------------------------
@@ -25,7 +27,7 @@ datasets = {
 # -----------------------------------------------------------------
 
 # Create LP formulations?
-MAKE_LP_FORMULATION = False
+MAKE_LP_FORMULATION = True
 
 # Create SDP models?
 MAKE_SDP_MODELS = True
@@ -43,8 +45,19 @@ DO_SPLIT = True
 # -----------------------------------------------------------------
 
 # Kelley cutting plane parameters
-EPSILON = 1e-3           # Threshold for a cut to be considered violated
-TAILOFF = 1e-1           # Tail off tolerance during cutting plane iterations
-MAX_CUTS_PER_ITER = 1000 # Max num of cuts to be added in a single cutting plane iteration
+CUTTING_PLANE_EPSILON = 1e-3            # Threshold for a cut to be 
+                                        # considered violated
+CUTTING_PLANE_TAILOFF = 1e-1            # Tail off tolerance during 
+                                        # cutting plane iterations
+CUTTING_PLANE_MAX_CUTS_PER_ITER = 1000  # Max num of cuts to be added in 
+                                        # a single cutting plane iteration
 
+# SDPNALplus_parameters
+# (see ./ThirdParty/SDPNAL+v1.0/SDPNALplus_parameters.m)
+SDPNAL_TOL = 1e-6
+SDPNAL_MAXITER = 2000000
+SDPNAL_MAXTIME = 250000
+SDPNAL_ADM_MAXITER = 20000
+SDPNAL_STOP_OPTION = 0
+SDPNAL_PRINT_LEVEL = 0
 
