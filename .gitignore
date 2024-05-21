@@ -1,0 +1,14 @@
+# Ignore all __pycache__ directories
+__pycache__/
+
+# Ignore ThirdParty directory
+ThirdParty/
+
+# Ignore all .zip files
+*.zip
+
+# Ignore all .mat files
+*.mat
+
+# Ignore macOS system files
+.DS_Store

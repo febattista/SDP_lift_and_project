@@ -1,6 +1,12 @@
-function extract_file(zipFile, inputFile, outputFile, splitted)
-%EXTRACT_FILE Summary of this function goes here
-%   Detailed explanation goes here
+function termcode = extract_file(zipFile, inputFile, outputFile, splitted)
+% EXTRACT_FILE extract inputFile from zipFile and save it at outputFile.
+%   Params:
+%         zipFile: path to zipFile
+%       inputFile: target file in zipFile
+%      outputFile: output file path
+%        splitted: if true, then extract the 5 parts of inputFile
+    termcode = true;
+    outputFile = char(outputFile);
     if (splitted)
         num_pieces = 5;
         for i=1:num_pieces
@@ -14,6 +20,8 @@ function extract_file(zipFile, inputFile, outputFile, splitted)
                 copier = com.mathworks.mlwidgets.io.InterruptibleStreamCopier.getInterruptibleStreamCopier;
                 copier.copyStream(inputstream, outStream);
                 outStream.close();
+            else
+                termcode = false;
             end
         end
     else 
@@ -25,6 +33,8 @@ function extract_file(zipFile, inputFile, outputFile, splitted)
             copier = com.mathworks.mlwidgets.io.InterruptibleStreamCopier.getInterruptibleStreamCopier;
             copier.copyStream(inputstream, outStream);
             outStream.close();
+        else
+            termcode = false;
         end
     end
 end

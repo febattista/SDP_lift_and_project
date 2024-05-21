@@ -1,0 +1,15 @@
+name: sdplift
+channels:
+  - defaults
+  - conda-forge
+  - gurobi
+dependencies:
+  - python=3.11
+  - networkx
+  - scipy
+  - gurobi
+  - pandas
+  - scikit-sparse
+  - matplotlib
+  - requests
+
