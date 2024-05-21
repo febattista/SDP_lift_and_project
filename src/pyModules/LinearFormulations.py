@@ -1,17 +1,21 @@
-import re, os
-from Graphs import *
+import os, json, subprocess
 import gurobi as gb
+from scipy.io import loadmat
+
+from pyModules.Graphs import *
+from pyModules.ADMMsolver import *
+from pyModules.SDPLifting import *
 
 
 def FRAC(G, model_name, dir_path='', write_lp=True):
     path = os.path.join(dir_path, model_name + '.lp')
     frac = gb.Model()
-    # frac.setParam('OutputFlag', 0)
-    # frac.setParam('Threads', 80)
     x = frac.addVars([i+1 for i in G.nodes()], vtype=gb.GRB.BINARY, name='x', lb=0.0, ub=1.0)
     frac.setObjective(x.sum(), gb.GRB.MAXIMIZE)
+    k = 0
     for i, j in G.edges():
-        frac.addConstr(x[i+1] + x[j+1] <= 1, name='edge')
+        k += 1
+        frac.addConstr(x[i+1] + x[j+1] <= 1, name=('edge%d' % k))
     frac.update()
     
     if write_lp:
@@ -127,42 +131,53 @@ def NOD(G, model_name, coeff, dir_path=''):
 
     return nod
 
+def compute_gamma(G):
+    # Compute \Gamma's
+    degs = {}
+    for x, y in G.degree:
+        degs[x] = y
+    return degs
 
-def compute_theta(filename, model_out_dir='', use_patience=False):
+
+def compute_theta(G, graphname, model_out_dir='', use_patience=False, options=None):
     # Options for the Admm
-    options = {}
-    options['tolerance'] = 1e-4
-    options['max_iter'] = 1000000
-    options['timelimit'] = 3600
-    options['print_it'] = 1000
-    options['debug'] = True
+    if not options:
+        options = {}
+        options['tolerance'] = 1e-4
+        options['max_iter'] = 1000000
+        options['timelimit'] = 3600
+        options['print_it'] = 1000
+        options['debug'] = False
 
     file_tmp = 'tmp'
-
-    G = read_graph_from_dimacs(os.path.join(work_dir, filename + '.stb'))
-
-    if os.path.exists(os.path.join(model_out_dir, "%s_theta.json" % (filename))):
+    if os.path.exists(os.path.join(model_out_dir, "%s_theta.json" % (graphname))):
         # Read Theta coeff in JSON file
-        with open(os.path.join(model_out_dir, filename + '_theta.json')) as f:
+        with open(os.path.join(model_out_dir, graphname + '_theta.json')) as f:
             j = json.load(f)
             theta = {}
             for i in j:
                 theta[int(i)] = j[i][0]
         return theta
 
+    tmp_path = os.path.join(model_out_dir, file_tmp + '.mat')
     theta = {}
-    for j in G.nodes():
+    n = len(G.nodes())
+    for i, j in enumerate(G.nodes()):
         H = G.subgraph(G.neighbors(j))
         H = nx.convert_node_labels_to_integers(H)
-        sdpss.Theta_SDP2(H, file_tmp, model_out_dir=model_out_dir, model_out='adal', debug=False)
-        h = loadmat(os.path.join(model_out_dir, file_tmp))
+        Theta_SDP(H, file_tmp, model_out_dir=model_out_dir, model_out='adal', debug=False)
+        h = loadmat(tmp_path)
         P = Problem(h['A'], h['b'], h['C'], c=0)
         opt_sol, _, _, secs = ADMMsolver.solve(P, norm_bound=len(H.nodes()), options=options, use_patience=use_patience)
         theta[j] = [np.floor(-opt_sol.safe_dual), secs]
-        print("Node %d : Theta %.2f" % (j, theta[j][0]), end='\r')
+        print("Node %d of %d : Theta %.2f" % (i + 1, n, theta[j][0]), end='\r')
+    print("\nDone!")
+    # Clean up tmp file
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
     # create json object from dictionary
     to_write = json.dumps(theta)
-    f = open(os.path.join(model_out_dir, "%s_theta.json" % (filename)),"w")
+    f = open(os.path.join(model_out_dir, "%s_theta.json" % (graphname)),"w")
     f.write(to_write)
     f.close()
     for i in theta:
@@ -170,32 +185,43 @@ def compute_theta(filename, model_out_dir='', use_patience=False):
     return theta
 
 
-def compute_alpha(filename, model_out_dir=''):
-    G = read_graph_from_dimacs(os.path.join(work_dir, filename + '.stb'))
-    if os.path.exists(os.path.join(model_out_dir, "%s_alpha.json" % (filename))):
+def cliquer_max_clique(filepath):
+    command = ['../ThirdParty/cliquer-1.21/cl', filepath, '-q', '-q']
+    start = time.time()
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    cltime = time.time() - start
+    # Get the output as a string
+    output = result.stdout
+    alpha = float(output.split(",")[0].split("=")[1])
+    return alpha, cltime
+
+
+def compute_alpha(G, graphname, model_out_dir=''):
+    if os.path.exists(os.path.join(model_out_dir, "%s_alpha.json" % (graphname))):
         # Read Alpha coeff in JSON file
-        with open(os.path.join(model_out_dir, filename + '_alpha.json')) as f:
+        with open(os.path.join(model_out_dir, graphname + '_alpha.json')) as f:
             j = json.load(f)
             alpha = {}
             for i in j:
                 alpha[int(i)] = j[i][0]
         return alpha
-    
+    tmp_path = os.path.join(model_out_dir, 'subgraph.stb')
     alpha = {}
-    for j in G.nodes():
+    n = len(G.nodes())
+    for i, j in enumerate(G.nodes()):
         H = G.subgraph(G.neighbors(j))
         H = nx.convert_node_labels_to_integers(H)
-        # cov = FRAC(G, 'tmp', write_lp=False)
-        # cov.optimize()
-        # alpha[j] = [cov.objVal, cov.Runtime]
-        start = time.time()
-        a = max(len(c) for c in nx.find_cliques(nx.complement(H)))
-        end = time.time() - start
-        alpha[j] = [a, end]
-        print("Node %d : Alpha %.2f" % (j, alpha[j][0]), end='\r')
+        write_graph_to_dimacs(nx.complement(H), tmp_path)
+        a, cltime = cliquer_max_clique(tmp_path)
+        alpha[j] = [a, cltime]
+        print("Node %d of %d : Alpha %.2f" % (i + 1, n, alpha[j][0]), end='\r')
+    print("\nDone!")
+    # Clean up tmp file
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
     # create json object from dictionary
     to_write = json.dumps(alpha)
-    f = open(os.path.join(model_out_dir, "%s_alpha.json" % (filename)),"w")
+    f = open(os.path.join(model_out_dir, "%s_alpha.json" % (graphname)),"w")
     f.write(to_write)
     f.close()
     for i in alpha:
