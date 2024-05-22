@@ -44,7 +44,7 @@ python model_building.py
 # Current folder in MATLAB should be src
 run_experiments
 ```
-2. Collect and analyze results by creating `LaTeX` tables in Python
+3. Collect and analyze results by creating `LaTeX` tables in Python
 ```
 python analyze_results.py
 ```
