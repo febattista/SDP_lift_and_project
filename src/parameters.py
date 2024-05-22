@@ -13,6 +13,8 @@
 #   ├── graphs/       : Graphs in DIMACS file format .stb
 #   ├── lp/           : Linear formulations in .lp format
 #                       (created during LP formulations)
+#   ├── tables/       : Results and LaTeX tables
+#                       (created by analyze_results.py)
 #   └── models/       : SDP models in .mat files
 #                       (created during SDP formulations)
 datasets = {
@@ -27,7 +29,7 @@ datasets = {
 # -----------------------------------------------------------------
 
 # Create LP formulations?
-MAKE_LP_FORMULATION = True
+MAKE_LP_FORMULATION = False
 
 # Create SDP models?
 MAKE_SDP_MODELS = True

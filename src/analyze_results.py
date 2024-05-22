@@ -1,17 +1,23 @@
-import os
-import re
-import zipfile
+import os, re, collections, json
 import numpy as np
 import pandas as pd
-from scipy import sparse
-from scipy.io import savemat, loadmat
-import time
-import itertools, collections
 import json
 
-from pyModules.SDPLifting import *
+from parameters import *
+
+pd.options.mode.copy_on_write = True
 
 
+# function to compute the percentage gap to the target column ('alpha')
+def compute_gaps(dfin, columns, target='alpha'):
+    l = 0
+    for column in columns:
+        dfin['gap' + column] = 100*(dfin[column] - dfin[target])/dfin[target]
+        l+=1
+    return dfin.iloc[:, l:]
+
+
+# function to compute the number of violated cuts for each class
 def count_values(input_dict, idx):
     output_dict = {}
     for i in idx:
@@ -22,265 +28,227 @@ def count_values(input_dict, idx):
             output_dict[value] += 1
     return output_dict
 
-data_dir   = os.path.join('StableSets', 'DIMACS', 'coeff_theta')
-# data_dir   = os.path.join('StableSets', 'Alpha')
-# data_dir   = os.path.join('StableSets', 'DIMACS', 'violated_cuts')
-# data_dir   = os.path.join('StableSets', 'Random-np', 'violated_cuts')
-lp_dir     = os.path.join('StableSets', 'DIMACS', 'lp')
-# lp_dir     = os.path.join('StableSets', 'Random-np', '%s')
-work_dir   = os.path.join('StableSets', 'DIMACS')
-# work_dir   = os.path.join('StableSets', 'Random-np')
-model_path = os.path.join('StableSets', 'DIMACS', 'models')
-# model_path = os.path.join('StableSets', 'Random-np', 'models')
 
-# csv_filename = 'DIMACS_cutting_planes'
-csv_filename = 'random_cutting_planes'
+# function to create a style formatter for index
+def get_idx_formatter(dataset):
+    formatter = {}
+    if 'random' in dataset.lower():
+        formatter['n'] = '{:.0f}'
+        formatter['d'] = '{:.1f}'
+        # formatter['i'] = '{:.0f}'
+    elif 'dimacs' in dataset.lower():
+        formatter['n'] = '{:s}'
+    return formatter
 
-zip_name = 'models_dimacs.zip'
 
-pieces = 5
+# function to create a style formatter for columns
+def get_col_formatter(columns):
+    formatter = {}
+    for c in columns:
+        if 'time' in c:
+            formatter[c] = '{:.2f}'
+        elif 'rounds' in c:
+            formatter[c] = '{:.0f}'
+        elif 'gap' in c:
+            formatter[c] = '{:.3f}'
+        elif 'obj' in c or 'TH+' == c:
+            formatter[c] = '{:.2f}'
+    return formatter
 
-results = collections.defaultdict(list)
 
-graphs = [ 
-        # 'brock200_1',
-        # 'brock200_2', 'brock200_3', 'brock200_4', \
-        # 'brock400_1', 'brock400_2', 'brock400_3', 'brock400_4', \
-        'brock800_1', 'brock800_2', 'brock800_3', 'brock800_4', \
-        # 'C125-9', 'C250-9', 
-        'C500-9', \
-        # 'DSJC125.1', 'DSJC125.5', 'DSJC125.9', 'DSJC500-5',\
-        # 'MANN_a9', 'MANN_a27',
-        # 'johnson32-2-4',\
-        # 'keller4', # 'keller5', \
-        'p_hat300-1', 'p_hat300-2', 'p_hat300-3', \
-        'p_hat500-1', 'p_hat500-2', 'p_hat500-3', \
-        'p_hat700-1', 'p_hat700-2', 'p_hat700-3', \
-        # 'sanr200_0.7', 'sanr200_0.9',  \
-        'sanr400_0.5', 'sanr400_0.7']
+# function to set the index based on dataset
+def make_index(df, dataset):
+    if 'random' in dataset.lower():
+        # Make the triplet (n, d, i) the index
+        # Assuming the graph's name is G_n_d_i
+        df['n'] = df['n'].str.replace('G_', '')
+        df[['n', 'd', 'i']] = df['n'].str.split('_', expand=True).astype(float)
+        df.set_index(['n', 'd', 'i'], inplace=True)
 
-for graph in graphs:
-    results["instance"].append(graph)
-    print(graph)
-    data_dir   = os.path.join('StableSets', 'DIMACS', 'coeff_theta')
-    filepath = os.path.join(data_dir, graph + '_theta.json')
-    # Open the JSON file for reading
-    with open(filepath, 'r') as file:
-        # # Load JSON data
-        data = json.load(file)
-        times = []
-        for _, item in data.items():
-            times.append(item[1])
-        
-        times = np.array(times)
-        results["min_theta"].append(np.min(times))
-        results["max_theta"].append(np.max(times))
-        results["average_theta"].append(np.average(times))
+    elif 'dimacs' in dataset.lower():
+        # Just set the name of the graph as index
+        df.set_index(['n'], inplace=True)
 
-    data_dir   = os.path.join('StableSets', 'Alpha')
-    filepath = os.path.join(data_dir, graph + '.stb.log')
-    with open(filepath, 'r') as file:
-        times = []
 
-        lines = file.readlines()
-        start = next(i for i, line in enumerate(lines) if "Rank" in line)
-        
-        for line in lines[start + 1:]:
-            if "----------------------------------------" in line:
-                break
-            times.append(float(line.split("|")[5].strip()))
-        
-        times = np.array(times)
-        results["min_alpha"].append(np.min(times))
-        results["max_alpha"].append(np.max(times))
-        results["average_alpha"].append(np.average(times))
+# Columns divided by category
+columns   = ['TH+', 'NOD1_obj', 'NOD2_obj', 'NOD3_obj', 'COV_obj', 'EDGE_obj']
+gaps      = ['gapTH+', 'gapNOD1_obj', 'gapNOD2_obj', 'gapNOD3_obj', 'gapCOV_obj', 'gapEDGE_obj']
+cuts      = ['NOD1_cut', 'NOD2_cut', 'NOD3_cut', 'COV_cut', 'EDGE_cut']
+rounds    = ['NOD1_rounds', 'NOD2_rounds', 'NOD3_rounds', 'COV_rounds', 'EDGE_rounds']
+cpu_times = ['TH+_time', 'NOD1_time', 'NOD2_time', 'NOD3_time', 'COV_time', 'EDGE_time']
 
-df_result = pd.DataFrame(results)
-df_result.set_index('instance', inplace=True)
-df_result = df_result.transpose()
+# Ordered columns to be displayed
+# All 
+all_cols = ['TH+', 'gapTH+', 'TH+_time', \
+        'NOD1_obj', 'gapNOD1_obj', 'NOD1_rounds', 'NOD1_time', \
+        'NOD2_obj', 'gapNOD2_obj', 'NOD2_rounds', 'NOD2_time', \
+        'NOD3_obj', 'gapNOD3_obj', 'NOD3_rounds', 'NOD3_time', \
+        'COV_obj', 'gapCOV_obj', 'COV_rounds', 'COV_time', \
+        'EDGE_obj', 'gapEDGE_obj', 'EDGE_rounds', 'EDGE_time']
+# UBs and gaps
+ub_gaps = ['TH+', 'gapTH+', \
+           'EDGE_obj', 'gapEDGE_obj', \
+           'COV_obj', 'gapCOV_obj', \
+           'NOD1_obj', 'gapNOD1_obj', \
+           'NOD2_obj', 'gapNOD2_obj', \
+           'NOD3_obj', 'gapNOD3_obj']
+# CPU times and rounds
+cpu_rounds = ['TH+_time', \
+              'EDGE_rounds', 'EDGE_time', \
+              'COV_rounds', 'COV_time', \
+              'NOD1_rounds', 'NOD1_time', \
+              'NOD2_rounds', 'NOD2_time', \
+              'NOD3_rounds', 'NOD3_time']
 
-def format_value(val):
-    if val < 1e-2:
-        return '$<0.01$'
+for d in datasets:
+    # Set up paths
+    print("--------------------------------------------------")
+    print("  DATASET %s " % d)
+    print("--------------------------------------------------")
+    data_path = datasets[d]
+    model_dir = os.path.join(data_path, 'models')
+    graph_dir = os.path.join(data_path, 'graphs')
+    lp_dir    = os.path.join(data_path, 'lp')
+    coeff_alpha_dir = os.path.join(data_path, 'coeff_alpha')
+    coeff_theta_dir = os.path.join(data_path, 'coeff_theta')
+    tables_dir = os.path.join(data_path, 'tables')
+
+    res_csv = "results_%s.csv" % d.lower()
+    aux_csv = "aux_data_%s.csv" % d.lower()
+    
+    if not os.path.exists(data_path):
+        print("WARNING: path to Dataset %s does not exist! Skipping this step ..." % d)
+        continue
+
+    if not os.path.exists(os.path.join(data_path, res_csv)):
+        print("WARNING: %s not found! Skipping this step ..." % res_csv)
+        continue
+
+    if not os.path.exists(tables_dir):
+        os.makedirs(tables_dir)
+
+    print("> Reading: %s" % res_csv)
+    # Read csv and auxiliary files into dataframes
+    with open(os.path.join(data_path, res_csv)) as f:
+        l = []
+        for line in f:
+            l.append(re.sub(r'\s+', '\t',line).split('\t')[:-1])
+
+        df = pd.DataFrame(l[1:], columns=l[0])
+    
+    print("> Reading: %s" % res_csv)
+    with open(os.path.join(data_path, aux_csv)) as f:
+        l = []
+        for line in f:
+            l.append(re.sub(r'\s+', '\t',line).split('\t')[:-1])
+
+        aux = pd.DataFrame(l[1:], columns=l[0])
+
+    df = df.merge(aux, on='n', how='left')
+
+    target_cols = list(set(df.columns) - set('n'))
+    df[target_cols] = df[target_cols].astype(float)
+
+    # Compute percentage gaps
+    compute_gaps(df, (['NOD_obj'] if 'random' in d.lower() else []) + columns)
+    # Compute number of cutting plane's rounds
+    df[rounds] = np.ceil(df[cuts] / CUTTING_PLANE_MAX_CUTS_PER_ITER)
+
+    # Save the raw processed table as csv
+    print("> Saving table: %s" % ('raw_results_%s.csv' % d.lower()))
+    target = df[list(aux.columns) + (['gapNOD_obj'] if 'random' in d.lower() else []) + all_cols]
+    make_index(target, d)
+    filepath = os.path.join(tables_dir, 'raw_results_%s.csv' % d.lower())
+    target.to_csv(filepath)
+    
+    # Format the output for LaTeX tables
+    formatter_col = get_col_formatter(list(target.columns))
+    formatter_idx = get_idx_formatter(d)
+    
+    print("> Saving table: %s" % ('ub_gaps_%s.tex' % d.lower()))
+    filepath = os.path.join(tables_dir, 'ub_gaps_%s.tex' % d.lower())
+    # If random graphs, aggregate over n and d and compute the mean
+    if 'random' in d.lower():
+        # Save UBs and gaps LaTeX table
+        target[['gapNOD_obj'] +  ub_gaps].groupby(by=['n', 'd']).mean() \
+            .style.format(formatter=formatter_col) \
+            .format_index(formatter=formatter_idx) \
+            .highlight_min(subset=gaps, axis=1, props="textbf:--rwrap;") \
+            .highlight_min(subset=columns[1:], axis=1, props="textbf:--rwrap;") \
+            .to_latex(buf=filepath)
+    else :
+        # Save UBs and gaps LaTeX table
+        target[ub_gaps].style.format(formatter=formatter_col) \
+            .format_index(formatter=formatter_idx) \
+            .highlight_min(subset=gaps, axis=1, props="textbf:--rwrap;") \
+            .highlight_min(subset=columns[1:], axis=1, props="textbf:--rwrap;") \
+            .to_latex(buf=filepath)
+    
+    print("> Saving table: %s" % ('cpu_rounds_%s.tex' % d.lower()))
+    filepath = os.path.join(tables_dir, 'cpu_rounds_%s.tex' % d.lower())
+    if 'random' in d.lower():
+        # Save CPU Times and rounds
+        target[cpu_rounds].groupby(by=['n', 'd']).mean() \
+            .style.format(formatter=formatter_col) \
+            .format_index(formatter=formatter_idx) \
+            .to_latex(buf=filepath)
+    
     else:
-        return '{:.2f}'.format(val)
+        # Save CPU Times and rounds
+        target[cpu_rounds].style.format(formatter=formatter_col) \
+            .format_index(formatter=formatter_idx) \
+            .to_latex(buf=filepath)
 
-print(df_result.style.format(format_value, precision=2).map_index(
-    lambda v: "rotatebox:{80}--rwrap;", axis=1
-    ).to_latex())
+    if os.path.exists(coeff_theta_dir) and os.path.exists(coeff_alpha_dir):
+        print("> Reading Theta coefficients ...")
+        results_th = collections.defaultdict(list)
+        results_alpha = collections.defaultdict(list)
+        with os.scandir(coeff_theta_dir) as inst_it: 
+            for instance in inst_it:
+                if instance.name.lower().endswith('.json'):
+                    graphname = os.path.splitext(instance.name)[0].replace('_theta', '')
+                    results_th["n"].append(graphname)
+                    filepath = os.path.join(coeff_theta_dir, instance.name)
+                    # Open the JSON file for reading
+                    with open(filepath, 'r') as file:
+                        # Load JSON data
+                        data = json.load(file)
+                        times = []
+                        for _, item in data.items():
+                            times.append(item[1])
+                        
+                        times = np.array(times)
+                        results_th["min_theta"].append(np.min(times))
+                        results_th["max_theta"].append(np.max(times))
+                        results_th["average_theta"].append(np.average(times))
 
-
-# n = [300, 275, 250, 225, 200, 175, 150]
-# d = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
-# i = [1, 2, 3, 4, 5]
-
-# basename = 'G_%d_%1.1f_%d'
-
-# idx = [g for g in itertools.product(n, d, i)]
-
-# graphs = [basename % graph for graph in itertools.product(n, d, i)]
-
-# relaxations = ['edge', 'cov', 'nod_alpha', 'nod_theta', 'nod_gamma']
-
-# # with zipfile.ZipFile(os.path.join(model_path, zip_name), 'r') as zip_ref:
-# for graph in graphs: 
-#     results["instance"].append(graph)
-#     print(graph)
-#     for rel in relaxations:
-#         filename = '%s_%s_viol_test.mat' % (graph, rel)
-#         dirname = graph.split('_')[1]
+        print("> Reading Alpha coefficients ...")
+        results_th = pd.DataFrame(results_th)
+        results_th.set_index('n', inplace=True)
         
-#         if '275' in dirname and 'cov' in rel:
-#             lpname = '%s_%s.lp' % (graph, 'clique')
-#         else:
-#             lpname = '%s_%s.lp' % (graph, rel)
+        with os.scandir(coeff_alpha_dir) as inst_it: 
+            for instance in inst_it:
+                if instance.name.lower().endswith('.json'):
+                    graphname = os.path.splitext(instance.name)[0].replace('_alpha', '')
+                    results_alpha["n"].append(graphname)
+                    filepath = os.path.join(coeff_alpha_dir, instance.name)
+                    # Open the JSON file for reading
+                    with open(filepath, 'r') as file:
+                        # Load JSON data
+                        data = json.load(file)
+                        times = []
+                        for _, item in data.items():
+                            times.append(item[1])
+                        
+                        times = np.array(times)
+                        results_alpha["min_alpha"].append(np.min(times))
+                        results_alpha["max_alpha"].append(np.max(times))
+                        results_alpha["average_alpha"].append(np.average(times))
+        
+        results_alpha = pd.DataFrame(results_alpha)
+        results_alpha.set_index('n', inplace=True)
 
-#         filepath = os.path.join(data_dir, filename)
-#         lppath = os.path.join(lp_dir % dirname, lpname)
-#         if os.path.exists(filepath): # and os.path.exists(lppath):
-#             if 'nod' in rel:
-#                 maps = map_nod_constraints(lppath)
-#             elif 'cov' in rel:
-#                 maps = map_clique_constraints(lppath)
-#             elif 'edge' in rel:
-#                 maps = map_edge_constraints(lppath)
-#             else:
-#                 print('Unknown relaxation!')
-#             # print(set(maps.values()))
-#             h = loadmat(filepath)
-#             added_cuts = count_values(maps, h['added_cuts_idx'])
-#             for i in set(maps.values()):
-#                 if i in added_cuts:
-#                     results[rel + '_' + i].append(added_cuts[i])
-#                 else:
-#                     results[rel + '_' + i].append(0)
-
-#             # Check for duplicate constraints added during the cutting plane
-#             # model_name = '%s_%s_%d.mat'
-#             # Bt = []
-#             # for i in range(2, pieces + 1):
-#             #     zip_ref.extract(os.path.join(model_path, model_name % (graph, rel, i)), 
-#             #                     os.path.join(model_path, model_name % (graph, rel, i)))
-#             #     Bt.append(loadmat(os.path.join(model_path, model_name % (graph, rel, i)))['Bt_' + i])
-            
-#             # Bt = sparse.hstack(Bt, format='csc')
-                    
-                    
-
-
-# df_result = pd.DataFrame(results)
-
-# df_result.set_index('instance', inplace=True)
-
-# col_mapping_to_labels = {
-#     'nod_gamma_bound2' : r'\eqref{eq:liftbound2}-\eqref{eq:liftbound3}', 
-#     'nod_gamma_bound4' : r'\eqref{eq:liftbound4}', 
-#     'nod_gamma_lift_nod1:1' : r'\eqref{nod1}',
-#     'nod_gamma_lift_nod2:1' : r'\eqref{nod2}',
-#     'nod_gamma_lift_nod3:1' : r'\eqref{nod3}',
-#     'nod_gamma_lift_nod1:2' : r'\eqref{nod4}',
-#     'nod_gamma_lift_nod2:2' : r'\eqref{nod5}',
-#     'nod_gamma_lift_nod3:2' : r'\eqref{nod6}',
-#     'nod_theta_bound2' : r'\eqref{eq:liftbound2}-\eqref{eq:liftbound3}', 
-#     'nod_theta_bound4' : r'\eqref{eq:liftbound4}', 
-#     'nod_theta_lift_nod1:1' : r'\eqref{nod1}',
-#     'nod_theta_lift_nod2:1' : r'\eqref{nod2}',
-#     'nod_theta_lift_nod3:1' : r'\eqref{nod3}',
-#     'nod_theta_lift_nod1:2' : r'\eqref{nod4}',
-#     'nod_theta_lift_nod2:2' : r'\eqref{nod5}',
-#     'nod_theta_lift_nod3:2' : r'\eqref{nod6}',
-#     'nod_alpha_bound2' : r'\eqref{eq:liftbound2}-\eqref{eq:liftbound3}', 
-#     'nod_alpha_bound4' : r'\eqref{eq:liftbound4}', 
-#     'nod_alpha_lift_nod1:1' : r'\eqref{nod1}',
-#     'nod_alpha_lift_nod2:1' : r'\eqref{nod2}',
-#     'nod_alpha_lift_nod3:1' : r'\eqref{nod3}',
-#     'nod_alpha_lift_nod1:2' : r'\eqref{nod4}',
-#     'nod_alpha_lift_nod2:2' : r'\eqref{nod5}',
-#     'nod_alpha_lift_nod3:2' : r'\eqref{nod6}',
-#     'cov_bound2' : r'\eqref{eq:liftbound2}-\eqref{eq:liftbound3}', 
-#     'cov_bound4' : r'\eqref{eq:liftbound4}', 
-#     'cov_lift_clq1:1' : r'\eqref{clq1}',
-#     'cov_lift_clq2:1' : r'\eqref{clq2}',
-#     'cov_lift_clq1:2' : r'\eqref{clq3}',
-#     'cov_lift_clq2:2' : r'\eqref{clq4}',
-#     'edge_bound2' : r'\eqref{eq:liftbound2}-\eqref{eq:liftbound3}', 
-#     'edge_bound4' : r'\eqref{eq:liftbound4}', 
-#     'edge_lift_edge1:1' : r'\eqref{eq:LS1}',
-#     'edge_lift_edge1:2' : r'\eqref{eq:LS2}'
-# }
-
-# cols_ord = [
-#     'nod_gamma_bound2', 
-#     'nod_gamma_bound4', 
-#     'nod_gamma_lift_nod1:1',
-#     'nod_gamma_lift_nod2:1',
-#     'nod_gamma_lift_nod3:1',
-#     'nod_gamma_lift_nod1:2',
-#     'nod_gamma_lift_nod2:2',
-#     'nod_gamma_lift_nod3:2',
-#     'nod_theta_bound2', 
-#     'nod_theta_bound4', 
-#     'nod_theta_lift_nod1:1',
-#     'nod_theta_lift_nod2:1',
-#     'nod_theta_lift_nod3:1',
-#     'nod_theta_lift_nod1:2',
-#     'nod_theta_lift_nod2:2',
-#     'nod_theta_lift_nod3:2',
-#     'nod_alpha_bound2', 
-#     'nod_alpha_bound4', 
-#     'nod_alpha_lift_nod1:1',
-#     'nod_alpha_lift_nod2:1',
-#     'nod_alpha_lift_nod3:1',
-#     'nod_alpha_lift_nod1:2',
-#     'nod_alpha_lift_nod2:2',
-#     'nod_alpha_lift_nod3:2',
-#     'cov_bound2', 
-#     'cov_bound4', 
-#     'cov_lift_clq1:1',
-#     'cov_lift_clq2:1',
-#     'cov_lift_clq1:2',
-#     'cov_lift_clq2:2',
-#     'edge_bound2',
-#     'edge_bound4',
-#     'edge_lift_edge1:1',
-#     'edge_lift_edge1:2'
-# ]
-
-# df_result = df_result[cols_ord]
-
-# df_result.to_csv(os.path.join(work_dir, csv_filename + '.csv'), index=True)
-
-# # Identify columns with all zeros
-# columns_to_remove = df_result.columns[df_result.eq(0).all()]
-
-# # Remove columns with all zeros
-# df_result = df_result.loc[:, ~df_result.columns.isin(columns_to_remove)]
-
-# df_result.index = pd.MultiIndex.from_tuples(idx, names=('n', 'd', 'i'))
-
-# df_result.groupby(by=['n', 'd']).mean().style \
-#     .format_index(formatter={'n' : '{:.0f}', 'd': '{:.1f}'}) \
-#     .format(precision=0) \
-#     .to_latex(buf=os.path.join(work_dir,csv_filename + '_table.tex'))
-
-# print("HEADER FOR LATEX TABLE")
-# s = 'Graph & '
-# for col in cols_ord:
-#     if col in df_result.columns:
-#         s += col_mapping_to_labels[col] + "& "
-
-# s = s[:-2] + "\\\\"
-
-# print(s)
-
-
-# inst_name_pattern = re.compile(r'(.*?)_([a-zA-Z]+_?[a-zA-Z]*)_viol_test\.mat')
-
-# with os.scandir(data_dir) as dataset_it:
-#     for d_entry in dataset_it:
-#         if d_entry.name.endswith(".mat"):
-#             match = inst_name_pattern.match(d_entry.name) 
-#             instance =  "" if not match else match.group(1)
-#             if instance:
-#                 results["instance"].append(instance)
-
+        results = results_th.merge(results_alpha, on='n', how='left')
+        print("> Saving table: %s" % ('cpu_rounds_%s.tex' % d.lower()))
+        filepath = os.path.join(tables_dir, 'cpu_coeff_%s.csv' % d.lower())
+        results.round(2).to_csv(filepath)
