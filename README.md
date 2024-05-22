@@ -17,7 +17,7 @@ To install and use the software, UNIX platforms (i.e. Linux and MacOS) are stron
 ## Prerequisites
 - [Anaconda](https://www.anaconda.com)
 - [MATLAB](https://matlab.mathworks.com)
-- [Gurobi](https://www.gurobi.com/academia/academic-program-and-licenses/) License (free for academics)
+- [Gurobi License](https://www.gurobi.com/academia/academic-program-and-licenses/) (free for academics)
 
 ## Installation Steps
 1. Create `conda` environment `sdplift` (by default)
