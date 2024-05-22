@@ -32,8 +32,22 @@ conda activate sdplift
 python install.py
 ```
 
-## Configuration
+## Usage
 Instructions on how to configure the project can be found in `parameters.py`.
+1. Create LP and/or SDP formulations in Python
+```
+cd src/
+python model_building.py
+```
+2. Solve them in MATLAB
+```
+# Current folder in MATLAB should be src
+run_experiments
+```
+2. Collect and analyze results by creating `LaTeX` tables in Python
+```
+python analyze_results.py
+```
 
 
 ## References
