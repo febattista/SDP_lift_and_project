@@ -12,4 +12,5 @@ dependencies:
   - scikit-sparse
   - matplotlib
   - requests
+  - jinja2
 
