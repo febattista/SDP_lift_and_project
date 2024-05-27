@@ -28,7 +28,7 @@ for d in datasets:
         continue
 
     # Create directories
-    for path in [model_dir, graph_dir, lp_dir, coeff_alpha_dir, coeff_theta_dir]:
+    for path in [model_dir, graph_dir]:
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -75,9 +75,6 @@ for d in datasets:
         print("--------------------------------------------------")
         print("  BUILDING SDP MODELS ")
         print("--------------------------------------------------")
-        # Create directory
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
         # Create an empty zip file
         out_path = os.path.join(model_dir, 'models_%s.zip' % d.lower())
         if not os.path.exists(out_path):
