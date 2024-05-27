@@ -1,5 +1,5 @@
 import os, json, subprocess
-import gurobi as gb
+import gurobipy as gb
 from scipy.io import loadmat
 
 from pyModules.Graphs import *
