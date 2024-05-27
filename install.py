@@ -57,7 +57,7 @@ try:
     print("> Building cliquer-1.21 ...", flush=True)
     subprocess.run(["make", "cl"], check=True)
     print("> Done!")
-except subprocess.CalledProcessError as e:
-    print(f"> Error running building Cliquer: {e}")
+except Exception as e:
+    print("> Warning: Error building Cliquer: LP formulation will not work!")
 
 print("> Installation completed successfully.")
