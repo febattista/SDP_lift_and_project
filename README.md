@@ -18,7 +18,7 @@ To install and use the software, UNIX platforms (i.e. Linux and MacOS) are stron
 
 
 ## Optional requirements
-This repo comes with all LP formulations used in computations already available. However, tools to replicate them are available and rely on C routines `cliquer` [2]. In order to use these functionalities, the following packages are required:
+This repo comes with all LP formulations used in computations already available. However, tools to replicate them are provided and rely on C routines `cliquer` [2]. In order to use these functionalities, the following packages are required:
 - [Make](https://www.gnu.org/software/make/)
 - [GCC](https://gcc.gnu.org)
 
