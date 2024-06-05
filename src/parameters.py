@@ -10,7 +10,7 @@
 #                       (created during LP formulations)
 #   ├── coeff_theta/  : Theta coefficients in Nodal LP formulation
 #                       (created during LP formulations)
-#   ├── graphs/       : Graphs in DIMACS file format .stb
+#   ├── graphs/       : Graphs in DIMACS file format .stb (Required)
 #   ├── lp/           : Linear formulations in .lp format
 #                       (created during LP formulations)
 #   ├── tables/       : Results and LaTeX tables
@@ -49,8 +49,10 @@ DO_SPLIT = True
 # Kelley cutting plane parameters
 CUTTING_PLANE_EPSILON = 1e-3            # Threshold for a cut to be 
                                         # considered violated
+
 CUTTING_PLANE_TAILOFF = 1e-1            # Tail off tolerance during 
                                         # cutting plane iterations
+                                        
 CUTTING_PLANE_MAX_CUTS_PER_ITER = 1000  # Max num of cuts to be added in 
                                         # a single cutting plane iteration
 

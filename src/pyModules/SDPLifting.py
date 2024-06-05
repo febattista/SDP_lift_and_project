@@ -73,7 +73,8 @@ def read_expr_from_lp(path_to_file):
     except IOError:
         print('Unable to open %s. Try again.' % path_to_file)
     except StopIteration:
-        print('LP file has been read.')
+        # print('LP file has been read.')
+        pass
 
 
 def read_constr_from_lp(path_to_file):
@@ -156,7 +157,7 @@ def map_edge_constraints(filename):
     for constr, b in constrs[1:]:
         for j in range(1, n + 1):
 
-            if lovasz_schrijver_filer(constr, j):
+            if lovasz_schrijver_filter(constr, j):
                 continue
 
             # k != i,j

@@ -2,8 +2,10 @@ import os, re, collections, json
 import numpy as np
 import pandas as pd
 import json
+from scipy.io import loadmat
 
 from parameters import *
+from pyModules.SDPLifting import map_nod_constraints, map_clique_constraints, map_edge_constraints
 
 pd.options.mode.copy_on_write = True
 
@@ -99,6 +101,43 @@ cpu_rounds = ['TH+_time', \
               'NOD1_rounds', 'NOD1_time', \
               'NOD2_rounds', 'NOD2_time', \
               'NOD3_rounds', 'NOD3_time']
+# Classes of linear inequalities
+cols_ord = [
+    'edge_bound2',
+    'edge_bound4',
+    'edge_lift_edge1:1',
+    'edge_lift_edge1:2',
+    'cov_bound2', 
+    'cov_bound4', 
+    'cov_lift_clq1:1',
+    'cov_lift_clq2:1',
+    'cov_lift_clq1:2',
+    'cov_lift_clq2:2',
+    'nod_gamma_bound2', 
+    'nod_gamma_bound4', 
+    'nod_gamma_lift_nod1:1',
+    'nod_gamma_lift_nod2:1',
+    'nod_gamma_lift_nod3:1',
+    'nod_gamma_lift_nod1:2',
+    'nod_gamma_lift_nod2:2',
+    'nod_gamma_lift_nod3:2',
+    'nod_theta_bound2', 
+    'nod_theta_bound4', 
+    'nod_theta_lift_nod1:1',
+    'nod_theta_lift_nod2:1',
+    'nod_theta_lift_nod3:1',
+    'nod_theta_lift_nod1:2',
+    'nod_theta_lift_nod2:2',
+    'nod_theta_lift_nod3:2',
+    'nod_alpha_bound2', 
+    'nod_alpha_bound4', 
+    'nod_alpha_lift_nod1:1',
+    'nod_alpha_lift_nod2:1',
+    'nod_alpha_lift_nod3:1',
+    'nod_alpha_lift_nod1:2',
+    'nod_alpha_lift_nod2:2',
+    'nod_alpha_lift_nod3:2',
+]
 
 for d in datasets:
     # Set up paths
@@ -111,6 +150,7 @@ for d in datasets:
     lp_dir    = os.path.join(data_path, 'lp')
     coeff_alpha_dir = os.path.join(data_path, 'coeff_alpha')
     coeff_theta_dir = os.path.join(data_path, 'coeff_theta')
+    viol_cuts_dir =   os.path.join(data_path, 'violated_cuts')
     tables_dir = os.path.join(data_path, 'tables')
 
     res_csv = "results_%s.csv" % d.lower()
@@ -252,3 +292,73 @@ for d in datasets:
         print("> Saving table: %s" % ('cpu_rounds_%s.tex' % d.lower()))
         filepath = os.path.join(tables_dir, 'cpu_coeff_%s.csv' % d.lower())
         results.round(2).to_csv(filepath)
+
+        print("> Reading Violated Cuts ...")
+        results = collections.defaultdict(list)
+        relaxations = ['edge', 'cov', 'nod_alpha', 'nod_theta', 'nod_gamma']
+
+        if os.path.exists(viol_cuts_dir):
+            with os.scandir(graph_dir) as inst_it: 
+                for instance in inst_it: 
+                    graphname = os.path.splitext(instance.name)[0]
+                    results["n"].append(graphname)
+
+                    for rel in relaxations:
+                        filename = '%s_%s_viol_test.mat' % (graphname, rel)
+                        lpname = graphname + '_' + rel + '.lp'
+
+                        filepath = os.path.join(viol_cuts_dir, filename)
+                        lppath = os.path.join(lp_dir, lpname)
+
+                        # Map each constraint in M_+() into different classes
+                        if os.path.exists(filepath) and os.path.exists(lppath):
+                            if 'nod' in rel:
+                                maps = map_nod_constraints(lppath)
+                            elif 'cov' in rel:
+                                maps = map_clique_constraints(lppath)
+                            elif 'edge' in rel:
+                                maps = map_edge_constraints(lppath)
+                            else:
+                                print('Unknown relaxation!')
+
+                            # Load the list of violated constraints 
+                            # added during cutting plane and count them for each class
+                            h = loadmat(filepath)
+                            added_cuts = count_values(maps, h['added_cuts_idx'])
+                            for i in set(maps.values()):
+                                if i in added_cuts:
+                                    results[rel + '_' + i].append(added_cuts[i])
+                                else:
+                                    results[rel + '_' + i].append(0)
+            
+            # Create a dataframe
+            df_viol_cuts = pd.DataFrame(results)
+            make_index(df_viol_cuts, d)
+            df_viol_cuts = df_viol_cuts.sort_index()
+
+            filepath = os.path.join(tables_dir, 'raw_violated_cuts_%s.csv' % d.lower())
+            # Order columns
+            df_viol_cuts = df_viol_cuts[cols_ord]
+            print("> Saving table: %s" % ('raw_violated_cuts_%s.csv' % d.lower()))
+            df_viol_cuts.to_csv(filepath)
+
+            filepath = os.path.join(tables_dir, 'violated_cuts_%s.tex' % d.lower())
+            print("> Saving table: %s" % ('violated_cuts_%s.tex' % d.lower()))
+            # Identify columns with all zeros 
+            # (i.e. no violated cuts identified for that class)
+            columns_to_remove = df_viol_cuts.columns[df_viol_cuts.eq(0).all()]
+
+            # Remove columns with all zeros
+            df_viol_cuts = df_viol_cuts.loc[:, ~df_viol_cuts.columns.isin(columns_to_remove)]
+
+            if 'random' in d.lower():
+                df_viol_cuts.groupby(by=['n', 'd']).mean() \
+                .style.format(precision=0) \
+                .format_index(formatter=formatter_idx) \
+                .to_latex(buf=filepath)
+            else:
+                df_viol_cuts \
+                .style.format(precision=0) \
+                .format_index(formatter=formatter_idx) \
+                .to_latex(buf=filepath)
+                
