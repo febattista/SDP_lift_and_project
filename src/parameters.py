@@ -19,7 +19,7 @@
 #                       (created during SDP formulations)
 datasets = {
      'smallDIMACS' : '../data/StableSets/smallDIMACS',
-     'smallRandom' : '../data/StableSets/smallRandom',
+     # 'smallRandom' : '../data/StableSets/smallRandom',
           # 'DIMACS' : '../data/StableSets/DIMACS',
           # 'Random' : '../data/StableSets/Random'
 }
@@ -29,18 +29,26 @@ datasets = {
 # -----------------------------------------------------------------
 
 # Create LP formulations?
-MAKE_LP_FORMULATION = False
+MAKE_LP_FORMULATION = True
 
 # Create SDP models?
-MAKE_SDP_MODELS = True
+MAKE_SDP_MODELS = False
 
 # Create Theta_plus models?
-MAKE_TH_PLUS_MODELS = True
+MAKE_TH_PLUS_MODELS = False
 
 # Splitting .mat files in 5 parts?
 # scipy savemat has a limit on the size of .mat files it can save
 # MATLAB also uses this parameter
 DO_SPLIT = True
+
+# ADMMsolver.py parameters
+# Used only if MAKE_LP_FORMULATION == True
+# in NOD_theta LP formulation
+ADMM_SOLVER_TOL = 1e-4
+ADMM_SOLVER_MAX_ITER = 1000000
+ADMM_SOLVER_TIMELIMIT = 3600
+ADMM_SOLVER_DEBUG = False
 
 # -----------------------------------------------------------------
 #   MATLAB PARAMETERS

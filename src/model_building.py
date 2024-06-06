@@ -41,6 +41,13 @@ for d in datasets:
             if not os.path.exists(path):
                 os.makedirs(path)
 
+        # Set up parameters for ADMMsolver.py
+        options = {}
+        options['tolerance'] = ADMM_SOLVER_TOL
+        options['max_iter']  = ADMM_SOLVER_MAX_ITER
+        options['timelimit'] = ADMM_SOLVER_TIMELIMIT
+        options['debug']     = ADMM_SOLVER_DEBUG
+
         with os.scandir(graph_dir) as inst_it: 
             for instance in inst_it:
                 if instance.name.lower().endswith('.stb'):
@@ -55,7 +62,7 @@ for d in datasets:
                     # NOD(G, theta)
                     theta = compute_theta(G, graphname, 
                                             model_out_dir=coeff_theta_dir, 
-                                            use_patience=True)
+                                            use_patience=True, options=options)
                     NOD(G, graphname + '_nod_theta', theta, lp_dir)
 
                     # NOD(G, alpha)
