@@ -19,7 +19,7 @@
 #                       (created during SDP formulations)
 datasets = {
      'smallDIMACS' : '../data/StableSets/smallDIMACS',
-     # 'smallRandom' : '../data/StableSets/smallRandom',
+     'smallRandom' : '../data/StableSets/smallRandom',
           # 'DIMACS' : '../data/StableSets/DIMACS',
           # 'Random' : '../data/StableSets/Random'
 }
@@ -29,13 +29,13 @@ datasets = {
 # -----------------------------------------------------------------
 
 # Create LP formulations?
-MAKE_LP_FORMULATION = True
+MAKE_LP_FORMULATION = False
 
 # Create SDP models?
-MAKE_SDP_MODELS = False
+MAKE_SDP_MODELS = True
 
 # Create Theta_plus models?
-MAKE_TH_PLUS_MODELS = False
+MAKE_TH_PLUS_MODELS = True
 
 # Splitting .mat files in 5 parts?
 # scipy savemat has a limit on the size of .mat files it can save
