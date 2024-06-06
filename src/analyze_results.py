@@ -72,6 +72,17 @@ def make_index(df, dataset):
         df.set_index(['n'], inplace=True)
 
 
+def escape_special_char(tex_file_path):
+   if os.path.exists(tex_file_path):
+        lines = []
+        with open(tex_file_path, 'r') as file:
+           for line in file:
+               lines.append(line.replace('_', r'\_'))
+        with open(tex_file_path, 'w') as file:
+            for line in lines:
+                file.write(line)
+
+
 # Columns divided by category
 columns   = ['TH+', 'NOD1_obj', 'NOD2_obj', 'NOD3_obj', 'COV_obj', 'EDGE_obj']
 gaps      = ['gapTH+', 'gapNOD1_obj', 'gapNOD2_obj', 'gapNOD3_obj', 'gapCOV_obj', 'gapEDGE_obj']
@@ -216,6 +227,7 @@ for d in datasets:
             .highlight_min(subset=gaps, axis=1, props="textbf:--rwrap;") \
             .highlight_min(subset=columns[1:], axis=1, props="textbf:--rwrap;") \
             .to_latex(buf=filepath)
+        escape_special_char(filepath)
     else :
         # Save UBs and gaps LaTeX table
         target[ub_gaps].style.format(formatter=formatter_col) \
@@ -223,6 +235,7 @@ for d in datasets:
             .highlight_min(subset=gaps, axis=1, props="textbf:--rwrap;") \
             .highlight_min(subset=columns[1:], axis=1, props="textbf:--rwrap;") \
             .to_latex(buf=filepath)
+        escape_special_char(filepath)
     
     print("> Saving table: %s" % ('cpu_rounds_%s.tex' % d.lower()))
     filepath = os.path.join(tables_dir, 'cpu_rounds_%s.tex' % d.lower())
@@ -232,12 +245,14 @@ for d in datasets:
             .style.format(formatter=formatter_col) \
             .format_index(formatter=formatter_idx) \
             .to_latex(buf=filepath)
+        escape_special_char(filepath)
     
     else:
         # Save CPU Times and rounds
         target[cpu_rounds].style.format(formatter=formatter_col) \
             .format_index(formatter=formatter_idx) \
             .to_latex(buf=filepath)
+        escape_special_char(filepath)
 
     if os.path.exists(coeff_theta_dir) and os.path.exists(coeff_alpha_dir):
         print("> Reading Theta coefficients ...")
@@ -289,7 +304,7 @@ for d in datasets:
         results_alpha.set_index('n', inplace=True)
 
         results = results_th.merge(results_alpha, on='n', how='left')
-        print("> Saving table: %s" % ('cpu_rounds_%s.tex' % d.lower()))
+        print("> Saving table: %s" % ('cpu_coeff_%s.csv' % d.lower()))
         filepath = os.path.join(tables_dir, 'cpu_coeff_%s.csv' % d.lower())
         results.round(2).to_csv(filepath)
 
@@ -356,9 +371,11 @@ for d in datasets:
                 .style.format(precision=0) \
                 .format_index(formatter=formatter_idx) \
                 .to_latex(buf=filepath)
+                escape_special_char(filepath)
             else:
                 df_viol_cuts \
                 .style.format(precision=0) \
                 .format_index(formatter=formatter_idx) \
                 .to_latex(buf=filepath)
+                escape_special_char(filepath)
                 
