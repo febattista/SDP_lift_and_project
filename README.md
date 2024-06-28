@@ -39,7 +39,7 @@ python install.py
 
 
 # Usage
-In `parameters.py`, one can select the Datasets (see below) to run the experiments with and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
+In `parameters.py`, the user can select the Datasets (see below) to run the experiments with and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
 
 1. Create LP and/or SDP formulations in Python (current folder should be `src/`)
 ```
@@ -53,6 +53,14 @@ run_experiments
 ```
 python analyze_results.py
 ```
+
+## Datasets
+A collection of 5 datasets are provided as follows:
+  * `DIMACS`: a collection of graphs selected from the Second DIMACS Implementation Challenge, a standard benchmark for Max Clique/Stable Set algorithms (total of 38 instances); 
+  * `smallDIMACS`: a compact version of `DIMACS` containing graphs with up to 250 nodes only (total of 11 instances);
+  * `Random`: a collection of Erdös–Rényi random graphs (total of 315 instances);
+  * `smallRandom`: a compact version of `Random` containing graphs with 150 nodes only (total of 45 instances);
+  * `testGraphs`: a collection of toy (but interesting) graphs.
 
 
 ## References
