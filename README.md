@@ -38,19 +38,18 @@ python install.py
 ```
 
 
-## Usage
-Instructions on how to configure the project can be found in `parameters.py`.
-1. Create LP and/or SDP formulations in Python
+# Usage
+In `parameters.py`, one can select the Datasets (see below) to run the experiments with and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
+
+1. Create LP and/or SDP formulations in Python (current folder should be `src/`)
 ```
-cd src/
 python model_building.py
 ```
-2. Solve them in MATLAB
+2. Solve them in MATLAB: open a MATLAB terminal (current folder should be `src/`)
 ```
-# Current folder in MATLAB should be src/
 run_experiments
 ```
-3. Collect and analyze results by creating `LaTeX` tables in Python
+3. Collect and analyze results by creating `LaTeX` tables in Python (optional)
 ```
 python analyze_results.py
 ```
