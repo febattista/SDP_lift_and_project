@@ -18,6 +18,7 @@
 #   └── models/       : SDP models in .mat files
 #                       (created during SDP formulations)
 datasets = {
+     'testGraphs'  : '../data/StableSets/testGraphs',
      'smallDIMACS' : '../data/StableSets/smallDIMACS',
      'smallRandom' : '../data/StableSets/smallRandom',
           # 'DIMACS' : '../data/StableSets/DIMACS',

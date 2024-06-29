@@ -6,7 +6,7 @@ from scipy.io import savemat
 from scipy.sparse import lil_matrix, hstack
 
 """
-    The main functions in this file provides the SDP models.
+    The main functions in this file provide the SDP models.
     The outputs are .mat files saved on the specified path.   
 
         m_plus_lifting(): Lovasz-Schrijver Lift-and-Project 

@@ -38,7 +38,11 @@ def get_idx_formatter(dataset):
         formatter['n'] = '{:.0f}'
         formatter['d'] = '{:.1f}'
         # formatter['i'] = '{:.0f}'
+        
     elif 'dimacs' in dataset.lower():
+        formatter['n'] = '{:s}'
+
+    else:
         formatter['n'] = '{:s}'
     return formatter
 
@@ -68,6 +72,10 @@ def make_index(df, dataset):
         df.set_index(['n', 'd', 'i'], inplace=True)
 
     elif 'dimacs' in dataset.lower():
+        # Just set the name of the graph as index
+        df.set_index(['n'], inplace=True)
+
+    else:
         # Just set the name of the graph as index
         df.set_index(['n'], inplace=True)
 

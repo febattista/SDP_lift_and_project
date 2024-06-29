@@ -42,7 +42,7 @@ for dep in dependencies:
     print("> Downloading %s ..." % dep, end="")
     archive_path = download_file(dependencies[dep], target)
     print("Done!")
-    print("> Exctracting %s ..." % dep, end="")
+    print("> Extracting %s ..." % dep, end="")
     extract_file(archive_path, target)
     os.remove(archive_path)
     print("Done!")
