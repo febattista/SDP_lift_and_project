@@ -61,6 +61,9 @@ A collection of 5 datasets are provided as follows:
   * `Random`: a collection of Erdös–Rényi random graphs (total of 315 instances);
   * `smallRandom`: a compact version of `Random` containing graphs with 150 nodes only (total of 45 instances);
   * `testGraphs`: a collection of toy (but interesting) graphs.
+Each dataset's directory is provided with an auxiliary file `aux_data_DATASETNAME.csv` containing the value of the maximum stable set for each graph in the dataset. This information is used exclusively from `analyze_results.py`.
+
+The user who is willing to solve its own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format.
 
 
 ## References
