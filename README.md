@@ -63,7 +63,7 @@ A collection of 5 datasets are provided as follows:
   * `testGraphs`: a collection of toy (but interesting) graphs.
 Each dataset's directory is provided with an auxiliary file `aux_data_DATASETNAME.csv` containing the value of the maximum stable set for each graph in the dataset. This information is used exclusively from `analyze_results.py`.
 
-The user who is willing to solve its own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format.
+The user who is willing to solve its own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format and modify the `parameters.py` file accordingly.
 
 
 ## References
