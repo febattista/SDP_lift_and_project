@@ -39,7 +39,7 @@ python install.py
 
 
 # Usage
-In `parameters.py`, the user can select the Datasets (see below) to run the experiments with and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
+In `parameters.py`, the user can select the Datasets (see below) to run the experiments on and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
 
 1. Create LP and/or SDP formulations in Python (current folder should be `src/`)
 ```
