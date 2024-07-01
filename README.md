@@ -64,7 +64,7 @@ A collection of 5 datasets are provided as follows:
     
 Each dataset's directory is provided with an auxiliary file `aux_data_DATASETNAME.csv` containing the value of the maximum stable set for each graph in the dataset. This information is used exclusively from `analyze_results.py`.
 
-The user who is willing to run the software on their own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format and modify the `parameters.py` file accordingly. To let `analyze_results.py` work properly, the stability number of each graph added in this way must be provided. To do so, suppose that the user wants to solve an instance named `example.stb` whose stability number is 5, then the following line should be added in `aux_data_testgraphs.csv`
+The user who is willing to run the software on their own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format and modify the `parameters.py` file accordingly. To let `analyze_results.py` work properly, the stability number of each graph added in this way must be provided. To do so, suppose that the user wants to solve an instance named `example.stb` whose stability number is known to be 5, then the following line should be added in `aux_data_testgraphs.csv`
 
 ```
 example  5
