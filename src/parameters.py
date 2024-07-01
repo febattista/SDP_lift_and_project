@@ -65,6 +65,9 @@ CUTTING_PLANE_TAILOFF = 1e-1            # Tail off tolerance during
 CUTTING_PLANE_MAX_CUTS_PER_ITER = 1000  # Max num of cuts to be added in 
                                         # a single cutting plane iteration
 
+CUTTING_PLANE_TIMELIMIT = 7200          # Time limit in seconds
+
+
 # SDPNALplus_parameters
 # (see ./ThirdParty/SDPNAL+v1.0/SDPNALplus_parameters.m)
 SDPNAL_TOL = 1e-6

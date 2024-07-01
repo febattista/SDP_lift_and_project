@@ -6,8 +6,11 @@
 %    2. When tailOff or no violated cuts are found, pass to the next class
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [nod_curr_obj, nod_tot_cuts, nod_time] = kelley_cutting_plane(model_folder,sol_folder, g, model_ext, At_th, b_th, X_th, blk, obj_th, theta_plus_time, Params)
- 
+function [R_curr_obj, R_tot_cuts, R_time] = kelley_cutting_plane(model_folder,sol_folder, g, model_ext, At_th, b_th, X_th, blk, obj_th, theta_plus_time, Params)
+
+fprintf('\n');
+
+% Initialize parameters
 splitted = Params.DO_SPLIT;
 OPTIONS = Params.sdpnal;
 
@@ -29,10 +32,19 @@ else
     max_c = 1000;
 end
 
-num_classes = 4;
-class_to_select = 1;
-num_pieces = 5;
-% Find cuts from M+
+if isfield(Params, 'CUTTING_PLANE_TIMELIMIT')
+    timelimit = Params.CUTTING_PLANE_TIMELIMIT;
+else
+    timelimit = 7200;
+end
+
+num_classes = 4;        % Total number of cut classes
+class_to_select = 1;    % Class to start to select the cuts from
+num_pieces = 5;         % Num of pieces .mat files are splitted
+
+% Load the SDP formulation R that is a restriction of Theta_plus and
+% cuts will be selected from
+fprintf('Model: %s%s\n', g, model_ext);
 if splitted
     for i=1:num_pieces
         piece = fullfile(model_folder, strcat(g, model_ext, sprintf('_%d.mat', i)));
@@ -41,52 +53,60 @@ if splitted
     Bt = [Bt_1 Bt_2 Bt_3 Bt_4];
 else
     model_path = fullfile(model_folder, strcat(g, model_ext, '.mat'));
-    fprintf('\nLoading: %s\n', model_path);
-    % Load nodal model
     load(model_path);
 end
-start = tic;
-Bt_nod = Bt;
-u_nod = u;
-cut_classes = cut_classes';
 
-curr_X = X_th;
-curr_obj = obj_th(1);
-new_obj = Inf;
-cutsBt = [ ];
-cuts_u = [ ];
-tot_cuts = 0;
-not_done = 1;
-n_cuts = 1;
-init_obj = curr_obj;
-added_cuts_idx = [];
+iter = 0;                   % Iterations count
+start = tic;                % Start timer
+Bt_R = Bt;                  % LHS matrix of R
+u_R = u;                    % RHS vector of R
+cut_classes = cut_classes'; % Class for each ineq in R
+curr_X = X_th;              % Current opt sol matrix
+curr_obj = obj_th(1);       % Current opt obj val
+init_obj = curr_obj;        % Obj val before cuts have been added
+new_obj = Inf;              % Obj val after cuts have been added
+cuts_Bt = [ ];              % LHS of cuts added so far
+cuts_u = [ ];               % RHS of cuts added so far
+added_cuts_idx = [];        % Idx of cuts added so far
+tot_cuts = 0;               % Num cuts added so far
+not_done = 1;               % Are we done?
+n_cuts = 1;                 % Num of cuts we are going to add in this iter
+
 while not_done
+    iter = iter + 1;
+    fprintf('Iter %d -----------------------------------\n', iter);
+    % compute violations and look for cuts to be added
+    % violations[i] > 0 means that i-th constraint is not satisfied by X*
+    % take the most violated constr and add to theta
     to_add = [];
     X_vec = svec(blk, curr_X{1,1});
-    % NOD(G) constraint violation from Theta X* opt sol
-    violations = AXfun(blk, Bt_nod, X_vec) - u_nod;
+    violations = AXfun(blk, Bt_R, X_vec) - u_R;
     [ord_viol, I] = sort(violations, 'descend');
-    % violations > 0 means that the constraint isn t satisfied by X*
     idx = find(ord_viol>epsilon);
     I = I(idx);
     violated_classes = cut_classes(I);
     I_i = I(violated_classes==class_to_select);
     to_add = [to_add; I_i];
     % ord_viol = ord_viol(idx);
-    % take the most violated constr and add to theta
     n_cuts = min(max_c, size(to_add, 1));
+
     if n_cuts > 0
+        % include the new cuts and re-optimize the SDP
         tot_cuts = tot_cuts + n_cuts;
-        cutsBt = [cutsBt Bt_nod(:, to_add(1:n_cuts))];
-        cuts_u = [cuts_u; u_nod(to_add(1:n_cuts))];
+        cuts_Bt = [cuts_Bt Bt_R(:, to_add(1:n_cuts))];
+        cuts_u = [cuts_u; u_R(to_add(1:n_cuts))];
+        % Warm starting SDPNALplus does not improve sol time
         %[new_obj,curr_X,s,y,S,Z,ybar,v,info,runhist] = sdpnalplus(blk,{At_th},{C},b_th, L,[],{cutsBt},[],cuts_u, OPTIONS,X_th,s_th,y_th,S_th,Z_th,ybar_th,v_th);
-        [new_obj,curr_X,s,y,S,Z,ybar,v,info,runhist] = sdpnalplus(blk,{At_th},{C},b_th, L,[],{cutsBt},[],cuts_u, OPTIONS);
+        [new_obj,curr_X,s,y,S,Z,ybar,v,info,runhist] = sdpnalplus(blk,{At_th},{C},b_th, L,[],{cuts_Bt},[],cuts_u, OPTIONS);
         new_obj = new_obj(1);
         added_cuts_idx = [added_cuts_idx; to_add(1:n_cuts)];
         fprintf('\n');
     else
         fprintf('No violated cuts \n')
+        new_obj = curr_obj;
     end
+
+    % check tailOff and termination criteria
     improve = abs(curr_obj - new_obj);
     if improve < delta || n_cuts == 0
         fprintf('Finished class %d. Tot cuts %d\n', class_to_select, tot_cuts);
@@ -98,20 +118,27 @@ while not_done
     end
     curr_obj = new_obj;
     fprintf('Obj changed of %13.5e\n', improve)
+    tend = toc(start);
+    fprintf('Time at this iter: %13.2f\n', tend);
+    if tend > timelimit
+        not_done = 0;
+        fprintf('Time limit reached\n')
+    end
 end
-tend = toc(start);
 tot_impro = abs(curr_obj - init_obj);
+fprintf('========================================================\n')
 fprintf('Total Improvement from theta: %13.5e\n', tot_impro);
 fprintf('Total Cuts added: %13d\n', tot_cuts);
 fprintf('Total time: %13.2f\n', tend);
+fprintf('========================================================\n')
 
 th_plus = init_obj;
-nod_curr_obj = curr_obj;
+R_curr_obj = curr_obj;
 if curr_obj == inf
-    nod_curr_obj = th_plus;
+    R_curr_obj = th_plus;
 end
-nod_tot_cuts = tot_cuts;
-nod_time = tend + theta_plus_time;
+R_tot_cuts = tot_cuts;
+R_time = tend + theta_plus_time;
 
 save(fullfile(sol_folder, strcat(g, model_ext, '_viol_test.mat')) , 'added_cuts_idx');
 end
