@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - gurobi
 dependencies:
-  - python=3.11
+  - python=3.9
   - networkx
   - scipy
   - gurobi
