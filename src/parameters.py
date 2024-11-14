@@ -30,7 +30,7 @@ datasets = {
 # -----------------------------------------------------------------
 
 # Create LP formulations?
-MAKE_LP_FORMULATION = True
+MAKE_LP_FORMULATION = False
 
 # Create SDP models?
 MAKE_SDP_MODELS = True
