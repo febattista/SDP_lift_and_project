@@ -56,10 +56,10 @@ python analyze_results.py
 
 ## Datasets
 A collection of 5 datasets are provided as follows:
-  * `DIMACS`: a collection of graphs selected from the Second DIMACS Implementation Challenge, a standard benchmark for Max Clique/Stable Set algorithms (total of 38 instances); 
+  * `DIMACS`: a collection of graphs selected from the Second DIMACS Implementation Challenge, a standard benchmark for Max Clique/Stable Set algorithms (total of 36 instances); 
   * `smallDIMACS`: a compact version of `DIMACS` containing graphs with up to 250 nodes only (total of 11 instances);
   * `Random`: a collection of Erdös–Rényi random graphs (total of 315 instances);
-  * `smallRandom`: a compact version of `Random` containing graphs with 150 nodes only (total of 45 instances);
+  * `smallRandom`: a compact version of `Random` containing graphs with 200 nodes only (total of 45 instances);
   * `testGraphs`: a collection of toy (but interesting) graphs.
     
 Each dataset's directory is provided with an auxiliary file `aux_data_DATASETNAME.csv` containing the value of the maximum stable set for each graph in the dataset. This information is used exclusively from `analyze_results.py`.
