@@ -285,9 +285,14 @@ for d in datasets:
                         results_th["max_theta"].append(np.max(times))
                         results_th["average_theta"].append(np.average(times))
 
+        # Convert results_th to DataFrame if non-empty
+        if results_th["n"]:
+            results_th = pd.DataFrame(results_th)
+            results_th.set_index('n', inplace=True)
+        else:
+            results_th = pd.DataFrame()
+
         print("> Reading Alpha coefficients ...")
-        results_th = pd.DataFrame(results_th)
-        results_th.set_index('n', inplace=True)
         
         with os.scandir(coeff_alpha_dir) as inst_it: 
             for instance in inst_it:
@@ -308,13 +313,21 @@ for d in datasets:
                         results_alpha["max_alpha"].append(np.max(times))
                         results_alpha["average_alpha"].append(np.average(times))
         
-        results_alpha = pd.DataFrame(results_alpha)
-        results_alpha.set_index('n', inplace=True)
+        # Convert results_alpha to DataFrame if non-empty
+        if results_alpha["n"]:
+            results_alpha = pd.DataFrame(results_alpha)
+            results_alpha.set_index('n', inplace=True)
+        else:
+            results_alpha = pd.DataFrame()
 
-        results = results_th.merge(results_alpha, on='n', how='left')
-        print("> Saving table: %s" % ('cpu_coeff_%s.csv' % d.lower()))
-        filepath = os.path.join(tables_dir, 'cpu_coeff_%s.csv' % d.lower())
-        results.round(2).to_csv(filepath)
+        # Merge and save only if both DataFrames have data
+        if not results_th.empty and not results_alpha.empty:
+            results = results_th.merge(results_alpha, on='n', how='left')
+            print("> Saving table: %s" % ('cpu_coeff_%s.csv' % d.lower()))
+            filepath = os.path.join(tables_dir, 'cpu_coeff_%s.csv' % d.lower())
+            results.round(2).to_csv(filepath)
+        else:
+            print("> Skipping table: Alpha and/or Theta coefficient datasets are empty.")
 
     print("> Reading Violated Cuts ...")
     results = collections.defaultdict(list)
