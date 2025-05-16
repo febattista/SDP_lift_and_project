@@ -6,7 +6,7 @@
 %    2. When tailOff or no violated cuts are found, pass to the next class
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [R_curr_obj, R_tot_cuts, R_time] = kelley_cutting_plane(model_folder,sol_folder, g, model_ext, At_th, b_th, X_th, blk, obj_th, theta_plus_time, Params)
+function [R_curr_obj, R_tot_cuts, R_time, R_iter] = kelley_cutting_plane(model_folder,sol_folder, g, model_ext, At_th, b_th, X_th, blk, obj_th, theta_plus_time, Params)
 
 fprintf('\n');
 
@@ -56,7 +56,9 @@ else
     load(model_path);
 end
 
-iter = 0;                   % Iterations count
+iter = 0;                   % Iterations count: an iteration is counted when  
+                            % vioated cuts are identified and the SDP is resolved
+
 start = tic;                % Start timer
 Bt_R = Bt;                  % LHS matrix of R
 u_R = u;                    % RHS vector of R
@@ -73,7 +75,6 @@ not_done = 1;               % Are we done?
 n_cuts = 1;                 % Num of cuts we are going to add in this iter
 
 while not_done
-    iter = iter + 1;
     fprintf('Iter %d -----------------------------------\n', iter);
     % compute violations and look for cuts to be added
     % violations[i] > 0 means that i-th constraint is not satisfied by X*
@@ -91,6 +92,8 @@ while not_done
     n_cuts = min(max_c, size(to_add, 1));
 
     if n_cuts > 0
+        fprintf('Found %d violated cuts from class %d\n', n_cuts, class_to_select);
+        iter = iter + 1;
         % include the new cuts and re-optimize the SDP
         tot_cuts = tot_cuts + n_cuts;
         cuts_Bt = [cuts_Bt Bt_R(:, to_add(1:n_cuts))];
@@ -139,6 +142,7 @@ if curr_obj == inf
 end
 R_tot_cuts = tot_cuts;
 R_time = tend + theta_plus_time;
+R_iter = iter;
 
 save(fullfile(sol_folder, strcat(g, model_ext, '_viol_test.mat')) , 'added_cuts_idx');
 end

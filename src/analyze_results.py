@@ -211,7 +211,8 @@ for d in datasets:
     # Compute percentage gaps
     compute_gaps(df, (['NOD_obj'] if 'random' in d.lower() else []) + columns)
     # Compute number of cutting plane's rounds
-    df[rounds] = np.ceil(df[cuts] / CUTTING_PLANE_MAX_CUTS_PER_ITER)
+    # old_rounds = [i + '_old' for i in rounds]
+    # df[old_rounds] = np.ceil(df[cuts] / CUTTING_PLANE_MAX_CUTS_PER_ITER)
 
     # Save the raw processed table as csv
     print("> Saving table: %s" % ('raw_results_%s.csv' % d.lower()))
@@ -219,6 +220,17 @@ for d in datasets:
     make_index(target, d)
     filepath = os.path.join(tables_dir, 'raw_results_%s.csv' % d.lower())
     target.to_csv(filepath)
+
+    # make_index(df, d)
+    # mismatch = df[
+    #         (df['EDGE_rounds'] != df['EDGE_rounds_old']) |
+    #         (df['COV_rounds']  != df['COV_rounds_old']) |
+    #         (df['NOD1_rounds'] != df['NOD1_rounds_old']) |
+    #         (df['NOD2_rounds'] != df['NOD2_rounds_old']) |
+    #         (df['NOD3_rounds'] != df['NOD3_rounds_old'])
+    #     ]
+
+    # print(mismatch[old_rounds + rounds])
     
     # Format the output for LaTeX tables
     formatter_col = get_col_formatter(list(target.columns))
