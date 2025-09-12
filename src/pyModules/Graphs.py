@@ -1,7 +1,7 @@
 import networkx as nx
 import scipy.io as io
 import numpy as np
-import re
+import re, itertools
 
 '''
 Return a (p, q)-web graph. Assumes p > 2q + 1
@@ -77,6 +77,69 @@ def greedy_clique_cover(G):
         i += 1
     # print(cliques)
     return [list(clique) for i, clique in cliques.items()]
+
+
+'''
+A simple heuristic for finding a maximal clique containing edge (u,v)
+'''
+def find_maximal_clique (G, u, v, nodeweight):
+    
+    yield u
+    yield v
+    
+    candidates = set(nx.common_neighbors(G, u, v))
+
+    while candidates:
+
+        inclique = max (candidates, key = lambda x : nodeweight[x])
+        yield inclique
+
+        candidates = candidates.intersection(G.neighbors(inclique))
+
+
+def greedy_clique_cover_letchford_et_al(inG):
+    G = inG.copy()
+
+    cliques = set()
+
+    nodeweight = {i : G.degree(i) for i in G.nodes()}
+
+    # Mark all edges as not covered
+    nx.set_edge_attributes(G, False, name='covered')
+
+    find_clique = True
+
+    while find_clique:
+
+        root_u = max(nodeweight,  key=lambda key: nodeweight[key])
+
+        if nodeweight[root_u] > 0:
+            max_weight = -1
+            root_v = None
+
+            for u, v, data in filter(lambda x: not x[2]['covered'], G.edges(root_u, data=True)):
+                if nodeweight[v]  > max_weight:
+                    max_weight = nodeweight[v]
+                    root_v = v
+            
+            if root_v is not None:
+                # Find maximal clique containing (u, v)
+                clique = list(find_maximal_clique(G, root_u, root_v, nodeweight))
+
+                cliques.add(tuple(sorted(clique)))
+
+                # Update weigths and labels
+                for u,v in itertools.combinations(clique, 2):
+                    if not G[u][v]['covered']:
+                        G[u][v]['covered'] = True
+                        nodeweight[u] -= 1.0
+                        nodeweight[v] -= 1.0
+            else:
+                find_clique = False
+        else:
+            find_clique = False
+    
+    return [list(clique) for clique in cliques]
 
 
 def G_hat():

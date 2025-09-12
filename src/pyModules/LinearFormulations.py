@@ -71,7 +71,8 @@ def QSTAB(G, model_name, dir_path='', write_lp=True):
 
 
 def QSTABC(G, model_name, dir_path='', write_lp=True):
-    cliques = greedy_clique_cover(G)
+    # cliques = greedy_clique_cover(G)
+    cliques = greedy_clique_cover_letchford_et_al(G)
     path = os.path.join(dir_path, model_name + '.lp')
     cov = gb.Model()
     x = cov.addVars([i+1 for i in G.nodes()], vtype=gb.GRB.BINARY, name='x', lb=0.0, ub=1.0)
