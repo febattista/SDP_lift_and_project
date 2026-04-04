@@ -1,10 +1,18 @@
+# Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ADMM solver for Theta SDP formulations used to compute nodal coefficients.
+
 import os
-_NUM_THREADS = "20"
-os.environ["OMP_NUM_THREADS"] = _NUM_THREADS # export OMP_NUM_THREADS=4
-os.environ["OPENBLAS_NUM_THREADS"] = _NUM_THREADS # export OPENBLAS_NUM_THREADS=4
-os.environ["MKL_NUM_THREADS"] = _NUM_THREADS # export MKL_NUM_THREADS=6
-os.environ["VECLIB_MAXIMUM_THREADS"] = _NUM_THREADS # export VECLIB_MAXIMUM_THREADS=4
-os.environ["NUMEXPR_NUM_THREADS"] = _NUM_THREADS # export NUMEXPR_NUM_THREADS=6
+
+# Thread count for parallel BLAS/OpenMP operations.
+# Can be configured via ADMM_SOLVER_THREADS in parameters.py, which
+# model_building.py sets as OMP_NUM_THREADS before importing this module.
+_NUM_THREADS = os.environ.get("OMP_NUM_THREADS", "20")
+os.environ["OMP_NUM_THREADS"] = _NUM_THREADS
+os.environ["OPENBLAS_NUM_THREADS"] = _NUM_THREADS
+os.environ["MKL_NUM_THREADS"] = _NUM_THREADS
+os.environ["VECLIB_MAXIMUM_THREADS"] = _NUM_THREADS
+os.environ["NUMEXPR_NUM_THREADS"] = _NUM_THREADS
 
 import time
 import numpy as np

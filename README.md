@@ -39,36 +39,105 @@ python install.py
 
 
 # Usage
-In `parameters.py`, the user can select the Datasets (see below) to run the experiments on and tune a variety of parameters. Detailed instructions on how to configure the experiments and description of each parameter can be found in that file.
+All experiments are configured in `src/parameters.py`. The key parameters are described below. Run all commands from the `src/` directory.
 
-1. Create LP and/or SDP formulations in Python (current folder should be `src/`)
+## Quick start (test graphs)
+The `testGraphs` dataset is enabled by default and contains a small set of graphs suitable for verifying the setup.
+
+1. **Build LP and SDP formulations** (Python):
 ```
+cd src
 python model_building.py
 ```
-2. Solve them in MATLAB: open a MATLAB terminal (current folder should be `src/`)
+This performs three phases (each can be enabled/disabled independently in `parameters.py`):
+- **Coefficient computation** (`MAKE_COEFFICIENTS`): computes theta (ADMM) and alpha (cliquer) nodal coefficients and caches them as JSON files in `data/StableSets/DATASET/coeff_theta/` and `coeff_alpha/`.
+- **LP formulation** (`MAKE_LP_FORMULATION`): builds five LP relaxations per graph (NOD_gamma, NOD_theta, NOD_alpha, COV, EDGE) and writes them to `data/StableSets/DATASET/lp/`.
+- **SDP model generation** (`MAKE_SDP_MODELS`): applies the M+ lift-and-project operator to each LP and archives the resulting `.mat` models in `data/StableSets/DATASET/models/models_DATASET.zip`.
+
+2. **Solve the SDP models** (MATLAB): open a MATLAB terminal with `src/` as the working directory and run:
 ```
 run_experiments
 ```
-3. Collect and analyze results by creating `LaTeX` tables in Python (optional)
+Results are written to `results/StableSets/DATASET/results_DATASET.csv` and violated-cut indices to `results/StableSets/DATASET/violated_cuts/`.
+
+3. **Analyse results and generate LaTeX tables** (Python, optional):
 ```
 python analyze_results.py
 ```
+LaTeX tables and summary CSVs are written to `results/StableSets/DATASET/tables/`.
 
-## Datasets
-A collection of 5 datasets are provided as follows:
-  * `DIMACS`: a collection of graphs selected from the Second DIMACS Implementation Challenge, a standard benchmark for Max Clique/Stable Set algorithms (total of 36 instances); 
-  * `smallDIMACS`: a compact version of `DIMACS` containing graphs with up to 250 nodes only (total of 11 instances);
-  * `Random`: a collection of Erdös–Rényi random graphs (total of 315 instances);
-  * `smallRandom`: a compact version of `Random` containing graphs with 200 nodes only (total of 45 instances);
-  * `testGraphs`: a collection of toy (but interesting) graphs.
-    
-Each dataset's directory is provided with an auxiliary file `aux_data_DATASETNAME.csv` containing the value of the maximum stable set for each graph in the dataset. This information is used exclusively from `analyze_results.py`.
 
-The user who is willing to run the software on their own instance(s) is recommended to place in `testGraphs/graphs` the corresponding file(s) `.stb` describing the graph(s) in the standard DIMACS edge-list format and modify the `parameters.py` file accordingly. To let `analyze_results.py` work properly, the stability number of each graph added in this way must be provided. To do so, suppose that the user wants to solve an instance named `example.stb` whose stability number is known to be 5, then the following line should be added in `aux_data_testgraphs.csv`
+## Directory layout
+```
+SDP_lift_and_project/
+├── data/StableSets/          input data (graphs, LP files, SDP models)
+│   └── DATASET/
+│       ├── graphs/           DIMACS .stb graph files (required)
+│       ├── lp/               generated LP formulations
+│       ├── coeff_alpha/      cached alpha coefficients (JSON)
+│       ├── coeff_theta/      cached theta coefficients (JSON)
+│       ├── models/           SDP models archive (.zip of .mat)
+│       └── aux_data_DATASET.csv    known optimal stability numbers
+│
+├── results/StableSets/       experiment outputs (gitignored)
+│   └── DATASET/
+│       ├── results_DATASET.csv     solver output (written by MATLAB)
+│       ├── violated_cuts/          added cut indices (.mat)
+│       └── tables/                 LaTeX tables and summary CSVs
+│
+└── src/                      all source code
+    ├── parameters.py         single configuration file
+    ├── model_building.py     builds LP and SDP formulations
+    ├── analyze_results.py    post-processes results
+    ├── run_experiments.m     MATLAB solver driver
+    ├── pyModules/            Python modules
+    └── MatlabModules/        MATLAB modules
+```
 
+
+## Key parameters (`src/parameters.py`)
+| Parameter | Description |
+|-----------|-------------|
+| `datasets` | Dict mapping dataset name to input data path |
+| `results_datasets` | Dict mapping dataset name to results output path |
+| `MAKE_COEFFICIENTS` | Compute theta/alpha coefficients (skipped if JSON cache exists) |
+| `MAKE_LP_FORMULATION` | Build LP relaxations |
+| `MAKE_SDP_MODELS` | Apply M+ operator and generate SDP archives |
+| `MAKE_TH_PLUS_MODELS` | Include Theta+ baseline SDP |
+| `DO_SPLIT` | Split large `.mat` files into 5 parts (needed for very large graphs) |
+| `ADMM_SOLVER_THREADS` | BLAS thread count for theta coefficient computation |
+| `SDP_LIFTING_STEP` | Batch size for building sparse SDP constraint matrices |
+| `CUTTING_PLANE_EPSILON` | Violation threshold to add a cut |
+| `CUTTING_PLANE_TAILOFF` | Minimum improvement per cutting-plane round |
+| `CUTTING_PLANE_TIMELIMIT` | Wall-clock time limit per instance (seconds) |
+
+
+## Adding custom instances
+Place your graph file(s) in `data/StableSets/testGraphs/graphs/` in the DIMACS edge-list format (`.stb`):
+```
+p edge <num_nodes> <num_edges>
+e <u> <v>
+...
+```
+Then add the known stability number for each graph to `data/StableSets/testGraphs/aux_data_testgraphs.csv`:
 ```
 example  5
 ```
+
+## Running the tests
+```
+conda activate sdplift
+pytest tests/
+```
+
+
+## Datasets
+A collection of 5 datasets are provided:
+  * `DIMACS`: 36 graphs from the Second DIMACS Implementation Challenge benchmark
+  * `smallDIMACS`: compact subset of `DIMACS` (graphs with ≤ 250 nodes, 11 instances)
+  * `Random`: 315 Erdös–Rényi random graphs at various sizes and densities
+  * `smallRandom`: compact subset of `Random` (200-node graphs only, 45 instances)
+  * `testGraphs`: small toy graphs for testing and development
 
 
 ## References

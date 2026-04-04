@@ -1,14 +1,15 @@
-# Ignore all __pycache__ directories
+# Python cache
 __pycache__/
+*.pyc
 
-# Ignore ThirdParty directory
+# Third-party dependencies (downloaded by install.py)
 ThirdParty/
 
-# Ignore all .zip files
+# Generated SDP model archives
 *.zip
 
-# Ignore all .mat files
+# Generated SDP model files
 *.mat
 
-# Ignore macOS system files
+# macOS system files
 .DS_Store

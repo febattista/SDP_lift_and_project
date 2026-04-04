@@ -1,5 +1,7 @@
+% Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
+% SPDX-License-Identifier: GPL-3.0-or-later
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%   KELLEY CUTTING PLANE 
+%   KELLEY CUTTING PLANE
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % At each iteration:
 %    1. Find violated cuts from the classes

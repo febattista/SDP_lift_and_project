@@ -1,4 +1,5 @@
 \ LP format - for model browsing. Use MPS format to capture full model detail.
+\ Signature: 0x2272aecb5d26497e
 Maximize
 obj:   x[1] + x[2] + x[7] + x[3] + x[8] + x[4] + x[5] + x[6]
 Subject To

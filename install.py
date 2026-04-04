@@ -1,3 +1,7 @@
+# Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Downloads and builds third-party dependencies: SDPNAL+ and cliquer.
+
 import os
 import shutil
 import subprocess

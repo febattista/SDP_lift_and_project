@@ -1,3 +1,5 @@
+% Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
+% SPDX-License-Identifier: GPL-3.0-or-later
 function termcode = clean_files(model_dir, filename, splitted)
 % CLEAN_FILES Clean up files previously extracted from the zipFile.
     termcode = true;

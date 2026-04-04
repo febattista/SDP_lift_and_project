@@ -1,3 +1,5 @@
+% Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
+% SPDX-License-Identifier: GPL-3.0-or-later
 function termcode = extract_file(zipFile, inputFile, outputFile, splitted)
 % EXTRACT_FILE extract inputFile from zipFile and save it at outputFile.
 %   Params:
