@@ -99,7 +99,7 @@ SDP_lift_and_project/
 | Parameter | Description |
 |-----------|-------------|
 | `datasets` | Dict mapping dataset name to input data path |
-| `results_datasets` | Dict mapping dataset name to results output path |
+| `results_dir` | Output directory |
 | `MAKE_COEFFICIENTS` | Compute theta/alpha coefficients (skipped if JSON cache exists) |
 | `MAKE_LP_FORMULATION` | Build LP relaxations |
 | `MAKE_SDP_MODELS` | Apply M+ operator and generate SDP archives |
