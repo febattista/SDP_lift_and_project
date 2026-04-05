@@ -1,5 +1,7 @@
 # SDP Lift-and-Project software
-This software package includes Python libraries for formulating Lov&aacute;sz and Schrijver's [1] Lift-and-Project semidefinite relaxations, along with MATLAB functions implementing a Cutting Plane method for solving them relying on a state-of-the-art Semidefinite Programming (SDP) solver [3]. Although this software is designed to be as general as possible, allowing the application of the Lov&aacute;sz and Schrijver's operator to any Linear Programming (LP) formulation, a strong emphasis has been placed on LP relaxations of the Maximum Stable Set Problem (MSSP).
+[![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs12532--025--00298--8-blue)](https://doi.org/10.1007/s12532-025-00298-8)
+
+This software package accompanies the paper [4] and includes Python libraries for formulating Lov&aacute;sz and Schrijver's [1] Lift-and-Project semidefinite relaxations, along with MATLAB functions implementing a Cutting Plane method for solving them relying on a state-of-the-art Semidefinite Programming (SDP) solver [3]. Although this software is designed to be as general as possible, allowing the application of the Lov&aacute;sz and Schrijver's operator to any Linear Programming (LP) formulation, a strong emphasis has been placed on LP relaxations of the Maximum Stable Set Problem (MSSP).
 
 
 ## Features
@@ -144,3 +146,4 @@ A collection of 5 datasets are provided:
  1. L&aacute;szl&oacute; Lov&aacute;sz and Alexander Schrijver. *Cones of matrices and set-functions and 0–1 optimization*. SIAM journal on optimization, 1(2):166–190, 1991.
  2. Sampo Niskanen and Patric R. J. Östergård, *Cliquer User's Guide, Version 1.0*, Communications Laboratory, Helsinki University of Technology, Espoo, Finland, Tech. Rep. T48, 2003.
  3. Defeng Sun, Kim-Chuan Toh, Yancheng Yuan, and Xin-Yuan Zhao. *SDPNAL+: A Matlab software for semidefinite programming with bound constraints*. Optimization Methods and Software, 35(1):87–115, 2020.
+ 4. Federico Battista, Fabrizio Rossi, and Stefano Smriglio. *Application of the Lov&aacute;sz–Schrijver Operator to Compact Stable Set Integer Programs*. Mathematical Programming Computation, 2025. DOI: [10.1007/s12532-025-00298-8](https://doi.org/10.1007/s12532-025-00298-8).
