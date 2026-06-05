@@ -4,7 +4,6 @@
 
 import os, json, subprocess, time
 import gurobipy as gb
-from scipy.io import loadmat
 from tqdm import tqdm
 
 from pyModules.Graphs import write_graph_to_dimacs
@@ -156,23 +155,18 @@ def compute_theta(G, graphname, model_out_dir='', use_patience=False, options=No
             j = json.load(f)
             return {int(i): j[i][0] for i in j}
 
-    tmp_path = os.path.join(model_out_dir, 'tmp.mat')
     theta = {}
     nodes = list(G.nodes())
     with tqdm(total=len(nodes), desc='    theta', unit='node') as pbar:
         for j in nodes:
             H = G.subgraph(G.neighbors(j))
             H = nx.convert_node_labels_to_integers(H)
-            Theta_SDP(H, 'tmp', model_out_dir=model_out_dir, model_out='adal', debug=False)
-            h = loadmat(tmp_path)
-            P = Problem(h['A'], h['b'], h['C'], c=0)
+            adal = Theta_SDP(H).to_adal()
+            P = Problem(adal['A'], adal['b'], adal['C'], c=0)
             opt_sol, _, _, secs = ADMMsolver.solve(P, norm_bound=len(H.nodes()), options=options, use_patience=use_patience)
             theta[j] = [np.floor(-opt_sol.safe_dual), secs]
             pbar.set_postfix(node=j, theta='%.2f' % theta[j][0])
             pbar.update(1)
-
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
 
     with open(json_path, 'w') as f:
         json.dump(theta, f)

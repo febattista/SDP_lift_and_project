@@ -142,8 +142,14 @@ for d in datasets:
                         if instance.name.lower().endswith('.stb'):
                             filename = os.path.splitext(instance.name)[0] + '_th+'
                             G = read_graph_from_dimacs(os.path.join(graph_dir, instance.name))
-                            Theta_plus_SDP(G, filename, model_out_dir=model_dir,
-                                           model_out='sdpnal', debug=True)
+                            model = Theta_plus_SDP(G)
+                            mat_path = os.path.join(model_dir, filename)
+                            model.write_sdpnal_mat(mat_path)
+                            print('  Saved: %s.mat (dim=%d, eq=%d, ineq=%d)' % (
+                                mat_path, model.dim,
+                                int((model.row_senses == '=').sum()),
+                                int((model.row_senses == '>').sum()),
+                            ))
                             add_files_to_zip(out_path,
                                              [os.path.join(model_dir, filename + '.mat')])
             else:

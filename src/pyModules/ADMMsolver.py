@@ -218,7 +218,7 @@ def ADMM_3b(A, b, C, sigma=1., Y=None, Z=None, S=None, norm_bound=None, options=
 
     m, n2 = A.shape
     n = int(np.sqrt(n2))
-    At, AAT = A.T, A @ A.T
+    At, AAT = A.T, (A @ A.T).tocsc()
 
     factor = cholesky(AAT)
     secs = time.time() - tstart

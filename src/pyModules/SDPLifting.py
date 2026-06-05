@@ -7,13 +7,14 @@ import os, time, itertools
 import numpy as np
 import re
 from scipy import sparse
-from scipy.io import savemat
-from scipy.sparse import lil_matrix, hstack
+from scipy.sparse import lil_matrix
+
+from pyModules.SDPModel import SDPModel
 from tqdm import tqdm
 
 """
-    The main functions in this file provide the SDP models.
-    The outputs are .mat files saved on the specified path.
+    The main functions in this file build SDPModel objects representing the SDP
+    programs in a solver-agnostic canonical lower-triangular format.
 
         m_plus_lifting(): Lovász-Schrijver Lift-and-Project formulation.
 
@@ -21,12 +22,11 @@ from tqdm import tqdm
 
         Theta_plus_SDP(): Theta+ function SDP formulation.
 
-    Format-specific serialization is separated from the computation:
+    To serialize to a specific solver format use the SDPModel export methods:
 
-        write_sdpnal_mat(): Serialize a model dict to SDPNAL+ .mat format.
-
-    This separation allows targeting a different SDP solver by implementing
-    an alternative write function without touching the lifting logic.
+        model.to_sdpnal()          -- returns dict suitable for SDPNAL+
+        model.to_adal()            -- returns dict suitable for the internal ADMM solver
+        model.write_sdpnal_mat()   -- saves a SDPNAL+ .mat file
 """
 
 
@@ -265,36 +265,34 @@ def map_nod_constraints(filename):
 # ---------------------------------------------------------------------------
 
 def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func=None):
-    """Build the M+ SDP model matrices from an LP file.
+    """Build the M+ SDP model as a canonical SDPModel.
 
-    Returns a solver-agnostic dict with keys:
-        At, b      : equality constraint matrix and RHS
-        Bt, u      : inequality constraint matrix and RHS
-        C          : objective matrix (negated node weights)
-        cut_classes: class label (1-4) for each inequality
-        n          : number of graph nodes
+    All constraint matrices are stored in lower-triangular form with no
+    solver-specific scaling; call model.to_sdpnal() or model.to_adal() to
+    obtain a solver-ready representation.
     """
     constrs = list(read_constr_from_lp(path_to_file))
 
     obj = constrs[0]
-    C = -np.diag([0.] + list(obj.values()))
-    n = C.shape[0] - 1
-    dim = ((n + 1) * (n + 2)) // 2
+    C_dense = -np.diag([0.] + list(obj.values()))
+    n = C_dense.shape[0] - 1
+    dim = n + 1
+    packed_dim = (dim * (dim + 1)) // 2
 
-    _2 = np.round(np.sqrt(2) / 2, 10)
+    # C is diagonal — lower-tri = diagonal itself
+    C = sparse.csr_matrix(C_dense)
 
-    p = 0  # Equality counter
-    l = 0  # Inequality counter
+    p = 0  # equality column counter
+    l = 0  # inequality column counter
 
-    _i = []
-    _j = []
-    _d = []
+    _i_ineq = []; _j_ineq = []; _d_ineq = []
+    _i_eq   = []; _j_eq   = []; _d_eq   = []
 
-    _At = []
-    _b = []
+    _Bt = []   # inequality COO blocks (packed_dim x step each)
+    _u  = []   # inequality RHS values
 
-    _Bt = []
-    _u = []
+    _At = []   # equality COO blocks
+    _b  = []   # equality RHS values
 
     cuts_classes = []
 
@@ -304,145 +302,123 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
             if skip_func and skip_func(constr, i):
                 continue
 
-            # (x_i)(a_j x - b) <= 0
+            # (x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> >= 0
+            # Canonical A entries: A_{i,var} = constr[var]/2 for var != i (off-diag),
+            #                      A_{i,i} accumulated with constr[i] (if in constr) + (-b)
             for var in constr:
                 idx = mat_idx(i, var)
-                _i.append(idx)
-                _j.append(l)
-                _d.append(constr[var] if i == var else _2 * constr[var])
+                _i_ineq.append(idx)
+                _j_ineq.append(l)
+                _d_ineq.append(constr[var] if i == var else 0.5 * constr[var])
 
             idx = mat_idx(i, i)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(-b)
+            _i_ineq.append(idx)
+            _j_ineq.append(l)
+            _d_ineq.append(-b)
             _u.append(0.)
             cuts_classes.append(1.)
             l += 1
             if l % step == 0:
-                _i, _j, _d, l = push(_i, _j, _d, _Bt, step, dim)
+                _i_ineq, _j_ineq, _d_ineq, l = push(
+                    _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
-            # (1 - x_i)(a_j x - b) <= 0
+            # (1 - x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> >= rhs
             for var in constr:
                 idx = mat_idx(i, var)
-                _i.append(idx)
-                _j.append(l)
-                _d.append(-constr[var] if i == var else -_2 * constr[var])
+                _i_ineq.append(idx)
+                _j_ineq.append(l)
+                _d_ineq.append(-constr[var] if i == var else -0.5 * constr[var])
                 idx = mat_idx(var, var)
-                _i.append(idx)
-                _j.append(l)
-                _d.append(constr[var])
+                _i_ineq.append(idx)
+                _j_ineq.append(l)
+                _d_ineq.append(constr[var])
 
             idx = mat_idx(i, i)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(b)
+            _i_ineq.append(idx)
+            _j_ineq.append(l)
+            _d_ineq.append(b)
             _u.append(b)
             cuts_classes.append(2.)
             l += 1
             if l % step == 0:
-                _i, _j, _d, l = push(_i, _j, _d, _Bt, step, dim)
+                _i_ineq, _j_ineq, _d_ineq, l = push(
+                    _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
     if lift_bounds:
         for i, j in itertools.combinations(range(1, n + 1), 2):
-            idx = mat_idx(i, i)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(-1.)
-            idx = mat_idx(i, j)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(_2)
+            # X_{ij} - X_{ii} <= 0  lifts to  <A, X> >= 0
+            # Canonical: A_{i,i} = -1, A_{i,j} = 0.5 (off-diagonal, i > j assumed)
+            ii, jj = max(i, j), min(i, j)
+            idx = mat_idx(ii, ii)
+            _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(-1.)
+            idx = mat_idx(ii, jj)
+            _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(0.5)
             _u.append(0.)
             cuts_classes.append(3.)
             l += 1
             if l % step == 0:
-                _i, _j, _d, l = push(_i, _j, _d, _Bt, step, dim)
+                _i_ineq, _j_ineq, _d_ineq, l = push(
+                    _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
-            idx = mat_idx(i, i)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(1.)
-            idx = mat_idx(j, j)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(1.)
-            idx = mat_idx(i, j)
-            _i.append(idx)
-            _j.append(l)
-            _d.append(-_2)
+            # X_{ii} + X_{jj} - X_{ij} >= 1
+            # Canonical: A_{i,i} = 1, A_{j,j} = 1, A_{i,j} = -0.5
+            idx = mat_idx(ii, ii)
+            _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(1.)
+            idx = mat_idx(jj, jj)
+            _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(1.)
+            idx = mat_idx(ii, jj)
+            _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(-0.5)
             _u.append(1.)
             cuts_classes.append(4.)
             l += 1
             if l % step == 0:
-                _i, _j, _d, l = push(_i, _j, _d, _Bt, step, dim)
+                _i_ineq, _j_ineq, _d_ineq, l = push(
+                    _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
-    if _i:
-        _i, _j, _d, l = push(_i, _j, _d, _Bt, l % step, dim)
+    if _i_ineq:
+        _i_ineq, _j_ineq, _d_ineq, l = push(
+            _i_ineq, _j_ineq, _d_ineq, _Bt, l % step, packed_dim)
 
-    _i.append(0)
-    _j.append(p)
-    _d.append(1.)
+    # Equality constraints ---------------------------------------------------
+    # X_{00} = 1
+    _i_eq.append(0); _j_eq.append(p); _d_eq.append(1.)
     _b.append(1.)
     p += 1
 
+    # X_{0,i} = X_{i,i} for i = 1..n
     for i in range(1, n + 1):
-        idx = mat_idx(i, 0)
-        _i.append(idx)
-        _j.append(p)
-        _d.append(_2)
-
+        idx = mat_idx(i, 0)   # off-diagonal: canonical A_{i,0} = 0.5
+        _i_eq.append(idx); _j_eq.append(p); _d_eq.append(0.5)
         idx = mat_idx(i, i)
-        _i.append(idx)
-        _j.append(p)
-        _d.append(-1.)
-
+        _i_eq.append(idx); _j_eq.append(p); _d_eq.append(-1.)
         _b.append(0.)
         p += 1
         if p % step == 0:
-            _i, _j, _d, p = push(_i, _j, _d, _At, step, dim)
+            _i_eq, _j_eq, _d_eq, p = push(
+                _i_eq, _j_eq, _d_eq, _At, step, packed_dim)
 
-    if _i:
-        _i, _j, _d, p = push(_i, _j, _d, _At, p % step, dim)
+    if _i_eq:
+        _i_eq, _j_eq, _d_eq, p = push(
+            _i_eq, _j_eq, _d_eq, _At, p % step, packed_dim)
 
-    At = sparse.hstack(_At, format='csc')
-    Bt = sparse.hstack(_Bt, format='csc')
-    u = np.array(_u).reshape(-1, 1)
-    b = np.array(_b).reshape(-1, 1)
+    # Assemble SDPModel.A = (num_rows x packed_dim), equalities first
+    A_eq   = sparse.hstack(_At, format='csc').T.tocsr()   # (n+1) x packed_dim
+    A_ineq = sparse.hstack(_Bt, format='csc').T.tocsr()   # m_ineq x packed_dim
+    A      = sparse.vstack([A_eq, A_ineq], format='csr')
 
-    return {'At': At, 'Bt': Bt, 'b': b, 'u': u, 'C': C,
-            'cut_classes': np.array(cuts_classes), 'n': n}
+    m_eq   = A_eq.shape[0]
+    m_ineq = A_ineq.shape[0]
+    num_rows = m_eq + m_ineq
 
+    row_rhs    = np.concatenate([np.array(_b), np.array(_u)])
+    row_senses = np.array(['='] * m_eq + ['>'] * m_ineq, dtype='U1')
 
-def write_sdpnal_mat(model, out_path, do_split=False):
-    """Serialize a model dict to SDPNAL+ .mat format.
-
-    Parameters
-    ----------
-    model    : dict returned by _compute_m_plus_model
-    out_path : output file path without extension (e.g. '.../graphname_edge')
-    do_split : if True, split Bt across 4 files (for very large models)
-    """
-    At = model['At']
-    Bt = model['Bt']
-    b  = model['b']
-    u  = model['u']
-    C  = model['C']
-    cut_classes = model['cut_classes']
-    n  = model['n']
-
-    if not do_split:
-        savemat(out_path + '.mat',
-                {'At': At, 'b': b, 'Bt': Bt, 'u': u, 'L': 0.,
-                 'C': C, 's': float(n + 1), 'cut_classes': cut_classes})
-    else:
-        savemat(out_path + '_1.mat',
-                {'At': At, 'b': b, 'u': u, 'L': 0.,
-                 'C': C, 's': float(n + 1), 'cut_classes': cut_classes})
-        splt = int(np.ceil(Bt.shape[1] / 4))
-        savemat(out_path + '_2.mat', {'Bt_1': Bt[:, :splt]})
-        savemat(out_path + '_3.mat', {'Bt_2': Bt[:, splt:2*splt]})
-        savemat(out_path + '_4.mat', {'Bt_3': Bt[:, 2*splt:3*splt]})
-        savemat(out_path + '_5.mat', {'Bt_4': Bt[:, 3*splt:]})
+    return SDPModel(
+        dim=dim, n=n, num_rows=num_rows,
+        C=C, A=A,
+        row_rhs=row_rhs, row_senses=row_senses,
+        cut_classes=np.array(cuts_classes),
+    )
 
 
 def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
@@ -454,14 +430,14 @@ def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
     filename     : LP file name (without directory)
     model_out_dir: directory where the .mat output is written
     work_dir     : directory containing the LP file
-    step         : batch size for building the sparse Bt matrix
+    step         : batch size for building the sparse constraint matrix
     lift_bounds  : whether to include 0-1 box lifting constraints
     skip_func    : optional function(constr, i) -> bool to skip constraints
-    do_split     : split Bt into 4 pieces when True (for large models)
+    do_split     : split Bt into 4 files when True (for large models)
 
     Returns
     -------
-    model : solver-agnostic dict (At, Bt, b, u, C, cut_classes, n)
+    model : SDPModel in canonical lower-triangular format
     """
     start = time.time()
     print('File: ', filename)
@@ -473,13 +449,15 @@ def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
 
     out_path = os.path.join(model_out_dir, out_filename)
     print('Saving MAT at: %s.mat' % out_path)
-    write_sdpnal_mat(model, out_path, do_split=do_split)
+    model.write_sdpnal_mat(out_path, do_split=do_split)
 
     elapsed = time.time() - start
+    eq_rows   = int((model.row_senses == '=').sum())
+    ineq_rows = int((model.row_senses == '>').sum())
     print('Finished! Total time: %.2f' % elapsed)
-    print('Order of the Matrix Variable: %d' % (model['n'] + 1))
-    print('Number of Equalities: %d' % model['At'].shape[1])
-    print('Number of Inequalities: %d' % model['Bt'].shape[1])
+    print('Order of the Matrix Variable: %d' % model.dim)
+    print('Number of Equalities: %d' % eq_rows)
+    print('Number of Inequalities: %d' % ineq_rows)
     print('-' * 12)
 
     return model
@@ -489,297 +467,159 @@ def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
 # Theta SDP
 # ---------------------------------------------------------------------------
 
-def _compute_theta_adal(G, step=10000):
-    """Build Theta SDP matrices in ADAL (full-matrix) format."""
+def Theta_SDP(G, step=10000):
+    """Build and return the Theta SDP for graph G as a canonical SDPModel.
+
+    Constraints (all equalities):
+      - X_{i+1,j+1} = 0         for each edge (i, j) in G
+      - X_{0,0} = 1              (trace normalisation)
+      - X_{0,i+1} = X_{i+1,i+1} for each node i
+    Objective: min -sum_i X_{i+1,i+1}
+
+    Use model.to_adal() to obtain the ADMM-compatible format, or
+    model.write_sdpnal_mat(path) to save a SDPNAL+ .mat file.
+    """
     n = len(G.nodes())
     dim = n + 1
+    packed_dim = (dim * (dim + 1)) // 2
 
-    C = lil_matrix((dim, dim))
+    C_lil = lil_matrix((dim, dim))
     for i in range(n):
-        C[i + 1, i + 1] = -1.
+        C_lil[i + 1, i + 1] = -1.
+    C = C_lil.tocsr()
 
-    A = lil_matrix((dim**2, 0))
-    b = np.zeros((0, 1))
-    _A = lil_matrix((dim**2, step))
-    _b = np.zeros((step, 1))
+    _At = []
+    _b  = []
+    _i = []; _j = []; _d = []
     p = 0
 
-    def _flush():
-        nonlocal A, b, _A, _b, p
-        A = hstack([A, _A])
-        b = np.vstack([b, _b])
-        _A = lil_matrix((dim**2, step))
-        _b = np.zeros((step, 1))
-        p = 0
-
     for i, j in G.edges():
-        i1 = (i + 1)*dim + (j + 1)
-        i2 = (j + 1)*dim + (i + 1)
-        _A[i1, p] = .5
-        _A[i2, p] = .5
+        ii, jj = max(i, j), min(i, j)
+        _i.append(mat_idx(ii + 1, jj + 1)); _j.append(p); _d.append(0.5)
+        _b.append(0.)
         p += 1
         if p == step:
-            _flush()
+            _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
-    _A[0, p] = 1.
-    _b[p] = 1.
+    _i.append(mat_idx(0, 0)); _j.append(p); _d.append(1.)
+    _b.append(1.)
     p += 1
     if p == step:
-        _flush()
+        _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
     for i in G.nodes():
-        i1 = (i + 1)
-        i2 = (i + 1)*dim
-        _A[i1, p] = .5
-        _A[i2, p] = .5
-        _A[(i + 1)*dim + (i + 1), p] = -1.
+        _i += [mat_idx(i + 1, 0), mat_idx(i + 1, i + 1)]
+        _j += [p, p]
+        _d += [0.5, -1.]
+        _b.append(0.)
         p += 1
         if p == step:
-            _flush()
+            _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
-    if p > 0:
-        A = hstack([A, _A.tocsc()[:, :p]])
-        b = np.vstack([b, _b[:p]])
+    if _i:
+        _i, _j, _d, p = push(_i, _j, _d, _At, p % step, packed_dim)
 
-    return {'A': A.T, 'b': b, 'C': C, 'mleq': 0, 'n': n}
+    num_rows = len(_b)
+    A = sparse.hstack(_At, format='csc').T.tocsr()
+    row_rhs    = np.array(_b)
+    row_senses = np.full(num_rows, '=', dtype='U1')
 
-
-def _compute_theta_sdpnal(G, step=10000):
-    """Build Theta SDP matrices in SDPNAL+ (packed symmetric) format."""
-    n = len(G.nodes())
-    dim = ((n + 1) * (n + 2)) // 2
-    _2 = np.sqrt(2)
-
-    C = lil_matrix((n + 1, n + 1))
-    for i in range(n):
-        C[i + 1, i + 1] = -1.
-
-    At = lil_matrix((dim, 0))
-    b = np.zeros((0, 1))
-    _At = lil_matrix((dim, step))
-    _b = np.zeros((step, 1))
-    p = 0
-
-    def _flush():
-        nonlocal At, b, _At, _b, p
-        At = hstack([At, _At])
-        b = np.vstack([b, _b])
-        _At = lil_matrix((dim, step))
-        _b = np.zeros((step, 1))
-        p = 0
-
-    for i, j in G.edges():
-        ii, jj = sorted([i, j], reverse=True)
-        idx = ((ii + 2) * (ii + 1)) // 2 + jj + 1
-        _At[idx, p] = _2 * 0.5
-        p += 1
-        if p == step:
-            _flush()
-
-    _At[0, p] = 1.
-    _b[p] = 1.
-    p += 1
-    if p == step:
-        _flush()
-
-    for i in G.nodes():
-        idx = ((i + 2) * (i + 1)) // 2
-        _At[idx, p] = _2 * 0.5
-        idx2 = ((i + 2) * (i + 1)) // 2 + (i + 1)
-        _At[idx2, p] = -1.
-        p += 1
-        if p == step:
-            _flush()
-
-    if p > 0:
-        At = hstack([At, _At.tocsc()[:, :p]])
-        b = np.vstack([b, _b[:p]])
-
-    return {'At': At, 'b': b, 'C': C, 'n': n}
-
-
-def Theta_SDP(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
-    """Compute and save the Theta SDP for graph G.
-
-    Parameters
-    ----------
-    model_out : 'adal' or 'sdpnal' — selects the output matrix format
-    """
-    assert model_out.lower() in {'adal', 'sdpnal'}, 'Supported models: adal, sdpnal'
-    if debug:
-        print('Theta_SDP')
-
-    start_time = time.time()
-
-    if model_out.lower() == 'adal':
-        model = _compute_theta_adal(G, step=step)
-        savemat(os.path.join(model_out_dir, filename) + '.mat',
-                {'A': model['A'], 'b': model['b'], 'C': model['C'], 'mleq': model['mleq']})
-    else:
-        model = _compute_theta_sdpnal(G, step=step)
-        savemat(os.path.join(model_out_dir, filename) + '.mat',
-                {'At': model['At'], 'b': model['b'], 'C': model['C'], 's': float(model['n'] + 1)})
-
-    if debug:
-        elapsed = time.time() - start_time
-        print('Finished! Time elapsed: %.2f' % elapsed)
-        print('Dimension of matrix variable: %d' % (model['n'] + 1))
-        print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
+    return SDPModel(dim=dim, n=n, num_rows=num_rows,
+                    C=C, A=A, row_rhs=row_rhs, row_senses=row_senses)
 
 
 # ---------------------------------------------------------------------------
 # Theta+ SDP
 # ---------------------------------------------------------------------------
 
-def _compute_theta_plus_adal(G, step=10000):
-    """Build Theta+ SDP matrices in ADAL format (adds non-edge positivity constraints)."""
+def Theta_plus_SDP(G, step=10000):
+    """Build and return the Theta+ SDP for graph G as a canonical SDPModel.
+
+    Extends Theta with non-edge non-positivity inequalities:
+      - <A_ij, X> >= 0  (i.e. X_{i+1,j+1} <= 0)  for each non-edge (i, j)
+    followed by the same equality constraints as Theta_SDP.
+
+    Use model.write_sdpnal_mat(path) to save a SDPNAL+ .mat file, or
+    model.to_adal() for the ADMM-compatible format.
+    """
     n = len(G.nodes())
     dim = n + 1
-    G_complement_edges = [e for e in itertools.combinations(G.nodes(), 2) if e not in G.edges()]
-    mleq = 0
+    packed_dim = (dim * (dim + 1)) // 2
 
-    C = lil_matrix((dim, dim))
+    edge_set = set(G.edges()) | {(j, i) for i, j in G.edges()}
+    complement_edges = [
+        (i, j) for i, j in itertools.combinations(G.nodes(), 2)
+        if (i, j) not in edge_set
+    ]
+
+    C_lil = lil_matrix((dim, dim))
     for i in range(n):
-        C[i + 1, i + 1] = -1.
+        C_lil[i + 1, i + 1] = -1.
+    C = C_lil.tocsr()
 
-    A = lil_matrix((dim**2, 0))
-    b = np.zeros((0, 1))
-    _A = lil_matrix((dim**2, step))
-    _b = np.zeros((step, 1))
+    # --- Inequality constraints: non-edge non-positivity ---
+    _Bt = []
+    _u  = []
+    _ib = []; _jb = []; _db = []
+    l = 0
+
+    for i, j in complement_edges:
+        ii, jj = max(i, j), min(i, j)
+        _ib.append(mat_idx(ii + 1, jj + 1)); _jb.append(l); _db.append(-0.5)
+        _u.append(0.)
+        l += 1
+        if l % step == 0:
+            _ib, _jb, _db, l = push(_ib, _jb, _db, _Bt, step, packed_dim)
+
+    if _ib:
+        _ib, _jb, _db, l = push(_ib, _jb, _db, _Bt, l % step, packed_dim)
+
+    # --- Equality constraints: same as Theta_SDP ---
+    _At = []
+    _b  = []
+    _i = []; _j = []; _d = []
     p = 0
 
-    def _flush():
-        nonlocal A, b, _A, _b, p
-        A = hstack([A, _A])
-        b = np.vstack([b, _b])
-        _A = lil_matrix((dim**2, step))
-        _b = np.zeros((step, 1))
-        p = 0
-
-    for i, j in G_complement_edges:
-        i1 = (i + 1)*dim + (j + 1)
-        i2 = (j + 1)*dim + (i + 1)
-        _A[i1, p] = -.5
-        _A[i2, p] = -.5
-        mleq += 1
-        p += 1
-        if p == step:
-            _flush()
-
     for i, j in G.edges():
-        i1 = (i + 1)*dim + (j + 1)
-        i2 = (j + 1)*dim + (i + 1)
-        _A[i1, p] = .5
-        _A[i2, p] = .5
+        ii, jj = max(i, j), min(i, j)
+        _i.append(mat_idx(ii + 1, jj + 1)); _j.append(p); _d.append(0.5)
+        _b.append(0.)
         p += 1
         if p == step:
-            _flush()
+            _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
-    _A[0, p] = 1.
-    _b[p] = 1.
+    _i.append(mat_idx(0, 0)); _j.append(p); _d.append(1.)
+    _b.append(1.)
     p += 1
     if p == step:
-        _flush()
+        _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
     for i in G.nodes():
-        i1 = (i + 1)
-        i2 = (i + 1)*dim
-        _A[i1, p] = .5
-        _A[i2, p] = .5
-        _A[(i + 1)*dim + (i + 1), p] = -1.
+        _i += [mat_idx(i + 1, 0), mat_idx(i + 1, i + 1)]
+        _j += [p, p]
+        _d += [0.5, -1.]
+        _b.append(0.)
         p += 1
         if p == step:
-            _flush()
+            _i, _j, _d, p = push(_i, _j, _d, _At, step, packed_dim)
 
-    if p > 0:
-        A = hstack([A, _A.tocsc()[:, :p]])
-        b = np.vstack([b, _b[:p]])
+    if _i:
+        _i, _j, _d, p = push(_i, _j, _d, _At, p % step, packed_dim)
 
-    return {'A': A.T, 'b': b, 'C': C, 'mleq': mleq, 'n': n}
+    # Combine: inequalities first, then equalities
+    A_ineq = sparse.hstack(_Bt, format='csc').T.tocsr() if _Bt else sparse.csr_matrix((0, packed_dim))
+    A_eq   = sparse.hstack(_At, format='csc').T.tocsr()
+    A      = sparse.vstack([A_ineq, A_eq], format='csr')
 
+    m_ineq   = len(_u)
+    m_eq     = len(_b)
+    num_rows = m_ineq + m_eq
 
-def _compute_theta_plus_sdpnal(G, step=10000):
-    """Build Theta+ SDP matrices in SDPNAL+ format."""
-    n = len(G.nodes())
-    dim = ((n + 1) * (n + 2)) // 2
-    _2 = np.sqrt(2)
+    row_rhs    = np.concatenate([np.array(_u), np.array(_b)])
+    row_senses = np.array(['>'] * m_ineq + ['='] * m_eq, dtype='U1')
 
-    C = lil_matrix((n + 1, n + 1))
-    for i in range(n):
-        C[i + 1, i + 1] = -1.
-
-    At = lil_matrix((dim, 0))
-    b = np.zeros((0, 1))
-    _At = lil_matrix((dim, step))
-    _b = np.zeros((step, 1))
-    p = 0
-
-    def _flush():
-        nonlocal At, b, _At, _b, p
-        At = hstack([At, _At])
-        b = np.vstack([b, _b])
-        _At = lil_matrix((dim, step))
-        _b = np.zeros((step, 1))
-        p = 0
-
-    for i, j in G.edges():
-        ii, jj = sorted([i, j], reverse=True)
-        idx = ((ii + 2) * (ii + 1)) // 2 + jj + 1
-        _At[idx, p] = _2 * 0.5
-        p += 1
-        if p == step:
-            _flush()
-
-    _At[0, p] = 1.
-    _b[p] = 1.
-    p += 1
-    if p == step:
-        _flush()
-
-    for i in G.nodes():
-        idx = ((i + 2) * (i + 1)) // 2
-        _At[idx, p] = _2 * 0.5
-        idx2 = ((i + 2) * (i + 1)) // 2 + (i + 1)
-        _At[idx2, p] = -1.
-        p += 1
-        if p == step:
-            _flush()
-
-    if p > 0:
-        At = hstack([At, _At.tocsc()[:, :p]])
-        b = np.vstack([b, _b[:p]])
-
-    return {'At': At, 'b': b, 'C': C, 'n': n}
-
-
-def Theta_plus_SDP(G, filename, limit=None, debug=False, model_out_dir='', model_out='adal', step=10000):
-    """Compute and save the Theta+ SDP for graph G.
-
-    Parameters
-    ----------
-    model_out : 'adal' or 'sdpnal' — selects the output matrix format
-    """
-    assert model_out.lower() in {'adal', 'sdpnal'}, 'Supported models: adal, sdpnal'
-    if debug:
-        print('Theta_plus_SDP')
-
-    start_time = time.time()
-
-    if model_out.lower() == 'adal':
-        model = _compute_theta_plus_adal(G, step=step)
-        savemat(os.path.join(model_out_dir, filename) + '.mat',
-                {'A': model['A'], 'b': model['b'], 'C': model['C'], 'mleq': model['mleq']})
-    else:
-        model = _compute_theta_plus_sdpnal(G, step=step)
-        savemat(os.path.join(model_out_dir, filename) + '.mat',
-                {'At': model['At'], 'b': model['b'], 'C': model['C'],
-                 'L': 0., 's': float(model['n'] + 1)})
-
-    if debug:
-        elapsed = time.time() - start_time
-        print('Finished! Time elapsed: %.2f' % elapsed)
-        print('Dimension of matrix variable: %d' % (model['n'] + 1))
-        print('Saving the model at: ' + os.path.join(model_out_dir, filename) + '.mat')
+    return SDPModel(dim=dim, n=n, num_rows=num_rows,
+                    C=C, A=A, row_rhs=row_rhs, row_senses=row_senses)
 
 
 if __name__ == "__main__":
