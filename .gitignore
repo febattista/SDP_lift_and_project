@@ -13,3 +13,6 @@ ThirdParty/
 
 # macOS system files
 .DS_Store
+
+# results directory
+results/

@@ -87,13 +87,30 @@ SDP_lift_and_project/
 │       ├── violated_cuts/          added cut indices (.mat)
 │       └── tables/                 LaTeX tables and summary CSVs
 │
+├── tests/                    pytest test suite
+│   ├── test_graphs.py        graph I/O and clique cover tests
+│   └── test_sdp_lifting.py   LP parsing, M+ lifting, SDPModel export tests
+│
 └── src/                      all source code
     ├── parameters.py         single configuration file
-    ├── model_building.py     builds LP and SDP formulations
-    ├── analyze_results.py    post-processes results
-    ├── run_experiments.m     MATLAB solver driver
-    ├── pyModules/            Python modules
-    └── MatlabModules/        MATLAB modules
+    ├── model_building.py     builds LP and SDP formulations (Python entry point)
+    ├── analyze_results.py    post-processes results into LaTeX tables
+    ├── run_experiments.m     MATLAB solver driver (cutting-plane entry point)
+    │
+    ├── pyModules/            Python library modules
+    │   ├── SDPModel.py       solver-agnostic SDP representation; exports to_sdpnal(),
+    │   │                       to_adal(), to_mosek()
+    │   ├── SDPLifting.py     M+ lift-and-project and Theta/Theta+ SDP formulations
+    │   ├── LinearFormulations.py  LP relaxations (FRAC, QSTABC, NOD) via Gurobi;
+    │   │                            theta/alpha nodal coefficient computation
+    │   ├── ADMMsolver.py     internal ADMM solver for Theta SDP (coefficient phase)
+    │   └── Graphs.py         graph I/O (DIMACS), clique cover algorithms
+    │
+    └── MatlabModules/        MATLAB library modules
+        ├── kelley_cutting_plane.m  Kelley cutting-plane algorithm
+        ├── setupParameters.m       solver and experiment parameters
+        ├── extract_file.m          extract .mat models from zip archive
+        └── clean_files.m           remove temporary files after solving
 ```
 
 
