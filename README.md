@@ -95,7 +95,8 @@ SDP_lift_and_project/
 │   ├── parameters.py         single configuration file
 │   ├── model_building.py     builds LP and SDP formulations (Python entry point)
 │   ├── analyze_results.py    post-processes results into LaTeX tables
-│   └── run_experiments.m     MATLAB solver driver (cutting-plane entry point)
+│   ├── run_experiments.m     MATLAB solver driver (cutting-plane entry point)
+│   └── solve_mosek.py        Mosek solver driver (requires Mosek installed)
 │
 └── src/                      library source code
     ├── pyModules/            Python library modules
