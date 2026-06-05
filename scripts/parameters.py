@@ -17,8 +17,8 @@
 #                       (created during LP formulations)
 #   └── aux_data_DATASETNAME.csv : Known optimal stability numbers
 datasets = {
-     # 'testGraphs'  : '../data/StableSets/testGraphs',
-     'smallDIMACS' : '../data/StableSets/smallDIMACS',
+     'testGraphs'  : '../data/StableSets/testGraphs',
+     # 'smallDIMACS' : '../data/StableSets/smallDIMACS',
      # 'smallRandom' : '../data/StableSets/smallRandom',
           # 'DIMACS' : '../data/StableSets/DIMACS',
           # 'Random' : '../data/StableSets/Random'

@@ -3,7 +3,7 @@
 % Main MATLAB script: solves SDP models via the Kelley cutting plane method
 % using SDPNAL+ for each dataset specified in parameters.py.
 
-addpath 'MatlabModules';
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'src', 'MatlabModules'));
 %%% Read parameters from parameters.py
 setupParameters;
 

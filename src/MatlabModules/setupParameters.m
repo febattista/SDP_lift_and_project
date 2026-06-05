@@ -6,7 +6,16 @@ clear
 
 matParams = struct();
 
-addpath(genpath(fullfile('..', 'ThirdParty', 'SDPNAL+v1.0')), path);
+% Anchor all paths to this file's location (src/MatlabModules/) so the
+% script works regardless of the MATLAB working directory.
+script_dir = fileparts(mfilename('fullpath'));
+addpath(genpath(fullfile(script_dir, '..', '..', 'ThirdParty', 'SDPNAL+v1.0')), path);
+
+% Ensure parameters.py (in src/scripts/) is on Python's path before importing.
+scripts_dir = fullfile(script_dir, '..', '..', 'scripts');
+if count(py.sys.path, scripts_dir) == 0
+    insert(py.sys.path, int32(0), scripts_dir);
+end
 
 % Import the parameters from Python module
 Params = py.importlib.import_module('parameters');
@@ -44,7 +53,7 @@ matParams.sdpnal.ADMmaxiter = double(Params.SDPNAL_ADM_MAXITER);
 matParams.sdpnal.stopoption = double(Params.SDPNAL_STOP_OPTION);
 matParams.sdpnal.printlevel = double(Params.SDPNAL_PRINT_LEVEL);
 
-clear Params tmp keys i ans RESTOREDEFAULTPATH_EXECUTED
+clear Params tmp keys i ans RESTOREDEFAULTPATH_EXECUTED script_dir scripts_dir
 
 Params = matParams;
 clear matParams

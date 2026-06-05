@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Post-process experimental results and generate LaTeX tables.
 
-import os, re, collections, json
+import sys, os, re, collections, json
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import numpy as np
 import pandas as pd
 from scipy.io import loadmat

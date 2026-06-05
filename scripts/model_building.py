@@ -3,7 +3,8 @@
 # Main script: computes LP coefficients, builds LP formulations, and generates
 # SDP models for all datasets specified in parameters.py.
 
-import os, zipfile, itertools
+import sys, os, zipfile, itertools
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import parameters first so ADMM_SOLVER_THREADS is available before
 # LinearFormulations (and thus ADMMsolver) is imported.

@@ -41,14 +41,14 @@ python install.py
 
 
 # Usage
-All experiments are configured in `src/parameters.py`. The key parameters are described below. Run all commands from the `src/` directory.
+All experiments are configured in `scripts/parameters.py`. The key parameters are described below. Run all commands from the `scripts/` directory.
 
 ## Quick start (test graphs)
 The `testGraphs` dataset is enabled by default and contains a small set of graphs suitable for verifying the setup.
 
 1. **Build LP and SDP formulations** (Python):
 ```
-cd src
+cd src/scripts
 python model_building.py
 ```
 This performs three phases (each can be enabled/disabled independently in `parameters.py`):
@@ -56,7 +56,7 @@ This performs three phases (each can be enabled/disabled independently in `param
 - **LP formulation** (`MAKE_LP_FORMULATION`): builds five LP relaxations per graph (NOD_gamma, NOD_theta, NOD_alpha, COV, EDGE) and writes them to `data/StableSets/DATASET/lp/`.
 - **SDP model generation** (`MAKE_SDP_MODELS`): applies the M+ lift-and-project operator to each LP and archives the resulting `.mat` models in `data/StableSets/DATASET/models/models_DATASET.zip`.
 
-2. **Solve the SDP models** (MATLAB): open a MATLAB terminal with `src/` as the working directory and run:
+2. **Solve the SDP models** (MATLAB): open a MATLAB terminal with `scripts/` as the working directory and run:
 ```
 run_experiments
 ```
@@ -91,12 +91,13 @@ SDP_lift_and_project/
 │   ├── test_graphs.py        graph I/O and clique cover tests
 │   └── test_sdp_lifting.py   LP parsing, M+ lifting, SDPModel export tests
 │
-└── src/                      all source code
-    ├── parameters.py         single configuration file
-    ├── model_building.py     builds LP and SDP formulations (Python entry point)
-    ├── analyze_results.py    post-processes results into LaTeX tables
-    ├── run_experiments.m     MATLAB solver driver (cutting-plane entry point)
-    │
+├── scripts/                  entry-point scripts (run from this directory)
+│   ├── parameters.py         single configuration file
+│   ├── model_building.py     builds LP and SDP formulations (Python entry point)
+│   ├── analyze_results.py    post-processes results into LaTeX tables
+│   └── run_experiments.m     MATLAB solver driver (cutting-plane entry point)
+│
+└── src/                      library source code
     ├── pyModules/            Python library modules
     │   ├── SDPModel.py       solver-agnostic SDP representation; exports to_sdpnal(),
     │   │                       to_adal(), to_mosek()
@@ -114,7 +115,7 @@ SDP_lift_and_project/
 ```
 
 
-## Key parameters (`src/parameters.py`)
+## Key parameters (`scripts/parameters.py`)
 | Parameter | Description |
 |-----------|-------------|
 | `datasets` | Dict mapping dataset name to input data path |
@@ -148,6 +149,7 @@ example  5
 conda activate sdplift
 pytest tests/
 ```
+Tests are run from the project root; `tests/conftest.py` adds `src/` to `sys.path` automatically.
 
 
 ## Datasets

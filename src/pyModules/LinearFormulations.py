@@ -174,9 +174,14 @@ def compute_theta(G, graphname, model_out_dir='', use_patience=False, options=No
     return {i: theta[i][0] for i in theta}
 
 
+_CLIQUER = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 '..', '..', 'ThirdParty', 'cliquer-1.21', 'cl'))
+
+
 def cliquer_max_clique(filepath):
     """Run cliquer on a DIMACS file and return (alpha, cpu_time)."""
-    command = ['../ThirdParty/cliquer-1.21/cl', filepath, '-q', '-q']
+    command = [_CLIQUER, filepath, '-q', '-q']
     start = time.time()
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
     cltime = time.time() - start
