@@ -565,7 +565,7 @@ def Theta_plus_SDP(G, step=10000):
 
     for i, j in complement_edges:
         ii, jj = max(i, j), min(i, j)
-        _ib.append(mat_idx(ii + 1, jj + 1)); _jb.append(l); _db.append(-0.5)
+        _ib.append(mat_idx(ii + 1, jj + 1)); _jb.append(l); _db.append(0.5)
         _u.append(0.)
         l += 1
         if l % step == 0:
