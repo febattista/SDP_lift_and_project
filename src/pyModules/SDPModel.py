@@ -18,8 +18,8 @@ class SDPModel:
                  X >= 0 (PSD)
 
     All constraint matrices are stored in canonical lower-triangular form:
-    A[i, mat_idx(j,k)] holds the symmetric entry (A_i)_{jk} for j >= k,
-    with no solver-specific sqrt(2) scaling. The inner product identity is:
+    A[i, mat_idx(j,k)] holds the symmetric entry (A_i)_{jk} for j >= k. 
+    The inner product is defined as:
 
         <A_i, X> = sum_j (A_i)_{jj} X_{jj} + 2 * sum_{j>k} (A_i)_{jk} X_{jk}
 
