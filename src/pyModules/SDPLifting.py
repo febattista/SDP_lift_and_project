@@ -431,7 +431,7 @@ def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
     model_out_dir: directory where the .mat output is written
     work_dir     : directory containing the LP file
     step         : batch size for building the sparse constraint matrix
-    lift_bounds  : whether to include 0-1 box lifting constraints
+    lift_bounds  : whether to include 0-1 box lifting constraints (McCormik inequalities)
     skip_func    : optional function(constr, i) -> bool to skip constraints
     do_split     : split Bt into 4 files when True (for large models)
 
