@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 """
     The main functions in this file build SDPModel objects representing the SDP
-    programs in a solver-agnostic canonical lower-triangular format.
+    programs where matrices are stored in lower-triangular format.
 
         m_plus_lifting(): Lovász-Schrijver Lift-and-Project formulation.
 
