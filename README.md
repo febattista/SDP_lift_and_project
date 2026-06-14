@@ -48,7 +48,6 @@ The `testGraphs` dataset is enabled by default and contains a small set of graph
 
 1. **Build LP and SDP formulations** (Python):
 ```
-cd src/scripts
 python model_building.py
 ```
 This performs three phases (each can be enabled/disabled independently in `parameters.py`):
