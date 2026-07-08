@@ -105,6 +105,11 @@ class TestReadConstrFromLp:
             assert len(constr) == 2
             assert all(v == 1.0 for v in constr.values())
 
+    def test_missing_file_raises(self, tmp_path):
+        missing = str(tmp_path / "does_not_exist.lp")
+        with pytest.raises(FileNotFoundError):
+            list(read_constr_from_lp(missing))
+
 
 # ---------------------------------------------------------------------------
 # M+ lifting — SDPModel structure

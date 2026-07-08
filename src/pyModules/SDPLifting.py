@@ -35,24 +35,20 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 
 def read_index_from_lp(path_to_file):
-    try:
-        with open(path_to_file) as f:
-            exp_id = re.compile(r"^\s*.*:")
+    with open(path_to_file) as f:
+        exp_id = re.compile(r"^\s*.*:")
 
-            i = 0
-            for line in f:
-                i += 1
-                if '\\' in line or not line:
-                    continue
-                if 'bounds' in line.lower():
-                    yield i
-                    break
+        i = 0
+        for line in f:
+            i += 1
+            if '\\' in line or not line:
+                continue
+            if 'bounds' in line.lower():
+                yield i
+                break
 
-                if re.search(exp_id, line):
-                    yield i
-
-    except IOError:
-        print('Unable to open %s. Try again.' % path_to_file)
+            if re.search(exp_id, line):
+                yield i
 
 
 def read_expr_from_lp(path_to_file):
@@ -83,8 +79,6 @@ def read_expr_from_lp(path_to_file):
                 yield s
                 start = ends
 
-    except IOError:
-        print('Unable to open %s. Try again.' % path_to_file)
     except StopIteration:
         pass
 
