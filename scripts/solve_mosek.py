@@ -155,7 +155,7 @@ def main():
     t_build = time.time() - t0
 
     eq_rows   = int((model.row_senses == '=').sum())
-    ineq_rows = int((model.row_senses == '>').sum())
+    ineq_rows = int((model.row_senses != '=').sum())
     print('PSD dim     : %d' % model.dim)
     print('Constraints : %d  (eq=%d  ineq=%d)' % (model.num_rows, eq_rows, ineq_rows))
     print('Build time  : %.2fs' % t_build)

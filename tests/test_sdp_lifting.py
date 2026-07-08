@@ -4,16 +4,18 @@
 # and SDPModel export correctness (to_sdpnal, to_adal).
 
 import os
-import tempfile
 import itertools
 import numpy as np
 import pytest
-from scipy import sparse
+
+import networkx as nx
 
 from pyModules.SDPLifting import (
     mat_idx,
     read_constr_from_lp,
     _compute_m_plus_model,
+    Theta_SDP,
+    Theta_plus_SDP,
 )
 from pyModules.SDPModel import SDPModel
 
@@ -137,8 +139,14 @@ class TestMPlusModel:
 
     def test_cut_classes_length_matches_inequality_rows(self, triangle_lp_path):
         model = _compute_m_plus_model(triangle_lp_path)
-        ineq_rows = int((model.row_senses == '>').sum())
+        ineq_rows = int((model.row_senses != '=').sum())
         assert len(model.cut_classes) == ineq_rows
+
+    def test_lifted_rows_are_upper_bounds(self, triangle_lp_path):
+        """Lifted inequality rows are <= constraints (see docs/plans/m-plus-kk-lifting.md)."""
+        model = _compute_m_plus_model(triangle_lp_path)
+        senses = set(model.row_senses)
+        assert senses == {'=', '<'}
 
     def test_cut_classes_values(self, triangle_lp_path):
         model = _compute_m_plus_model(triangle_lp_path)
@@ -301,6 +309,106 @@ class TestSDPModelExports:
             trace_results.append(val)
 
         # In to_adal, inequalities come first; equality rows follow
-        n_ineq = int((model.row_senses == '>').sum())
+        n_ineq = int((model.row_senses != '=').sum())
         adal_results = np.asarray(A_full[n_ineq:] @ X_flat).ravel()
         np.testing.assert_allclose(adal_results, trace_results, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Integral-feasibility invariant
+# ---------------------------------------------------------------------------
+# Any valid relaxation must contain the moment matrix Y = y y^T, y = (1, chi_S),
+# of every stable set S. Checking each row under its declared sense catches any
+# sign or sense inversion in the lifting (see docs/plans/m-plus-kk-lifting.md).
+
+# 5-cycle (nodes 1..5, edges of C5):
+_C5_LP = """\
+obj: x[1] + x[2] + x[3] + x[4] + x[5]
+subject to
+ edge1: x[1] + x[2] <= 1
+ edge2: x[2] + x[3] <= 1
+ edge3: x[3] + x[4] <= 1
+ edge4: x[4] + x[5] <= 1
+ edge5: x[1] + x[5] <= 1
+bounds
+ 0 <= x[1] <= 1
+ 0 <= x[2] <= 1
+ 0 <= x[3] <= 1
+ 0 <= x[4] <= 1
+ 0 <= x[5] <= 1
+end
+"""
+
+_C5_EDGES = [(1, 2), (2, 3), (3, 4), (4, 5), (1, 5)]
+_TRIANGLE_EDGES = [(1, 2), (1, 3), (2, 3)]
+
+
+@pytest.fixture
+def c5_lp_path(tmp_path):
+    path = tmp_path / "c5.lp"
+    path.write_text(_C5_LP)
+    return str(path)
+
+
+def _stable_sets(n, edges):
+    """All stable sets of the graph on nodes 1..n with the given edge list."""
+    for r in range(n + 1):
+        for S in itertools.combinations(range(1, n + 1), r):
+            members = set(S)
+            if not any(u in members and v in members for u, v in edges):
+                yield members
+
+
+def _canonical_row_values(model, Y):
+    """<A_i, Y> for every row, under the canonical packed inner product."""
+    pi, pj = model._packed_ij()
+    weight = np.where(pi == pj, 1.0, 2.0)
+    y_packed = weight * Y[pi, pj]
+    return np.asarray(model.A @ y_packed).ravel()
+
+
+def _assert_feasible(model, Y, label):
+    vals = _canonical_row_values(model, Y)
+    for i, (val, sense, rhs) in enumerate(
+            zip(vals, model.row_senses, model.row_rhs)):
+        if sense == '=':
+            assert abs(val - rhs) <= 1e-9, \
+                '%s: row %d: %g != %g' % (label, i, val, rhs)
+        elif sense == '<':
+            assert val <= rhs + 1e-9, \
+                '%s: row %d: %g > %g' % (label, i, val, rhs)
+        else:
+            assert val >= rhs - 1e-9, \
+                '%s: row %d: %g < %g' % (label, i, val, rhs)
+
+
+class TestIntegralFeasibility:
+
+    @pytest.mark.parametrize('graph', ['triangle', 'c5'])
+    def test_m_plus_contains_all_stable_sets(self, graph, triangle_lp_path,
+                                             c5_lp_path):
+        if graph == 'triangle':
+            path, n, edges = triangle_lp_path, 3, _TRIANGLE_EDGES
+        else:
+            path, n, edges = c5_lp_path, 5, _C5_EDGES
+
+        model = _compute_m_plus_model(path)
+        for S in _stable_sets(n, edges):
+            y = np.zeros(model.dim)
+            y[0] = 1.0
+            for i in S:
+                y[i] = 1.0
+            _assert_feasible(model, np.outer(y, y), '%s S=%s' % (graph, S))
+
+    @pytest.mark.parametrize('builder', [Theta_SDP, Theta_plus_SDP])
+    def test_theta_models_contain_all_stable_sets(self, builder):
+        G = nx.cycle_graph(5)   # 0-based nodes; SDP index = node + 1
+        model = builder(G)
+        edges = [(u + 1, v + 1) for u, v in G.edges()]
+        for S in _stable_sets(len(G.nodes()), edges):
+            y = np.zeros(model.dim)
+            y[0] = 1.0
+            for i in S:
+                y[i] = 1.0
+            _assert_feasible(model, np.outer(y, y),
+                             '%s S=%s' % (builder.__name__, S))

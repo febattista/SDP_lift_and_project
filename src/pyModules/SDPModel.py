@@ -37,7 +37,7 @@ class SDPModel:
     row_rhs:    np.ndarray = None  # (num_rows,)
     row_senses: np.ndarray = None  # (num_rows,)  dtype='U1': '<', '>', '='
 
-    cut_classes: np.ndarray = None  # class labels aligned with '>' rows (M+ only)
+    cut_classes: np.ndarray = None  # class labels aligned with '<' rows (M+ only)
     col_names:  list = field(default_factory=list)
     row_names:  list = field(default_factory=list)
 
@@ -122,6 +122,11 @@ class SDPModel:
 
         Unpacks each constraint row from packed lower-triangular to a full dim^2
         flat vector. Inequalities are placed first (count = mleq), then equalities.
+
+        Note: the internal ADMM solver (ADMMsolver.ADMM_3b) treats every row as
+        an equality and ignores mleq, so only equality-only models (e.g.
+        Theta_SDP) may be passed to it. mleq is exported for ADAL-format
+        compatibility; inequality rows keep the direction given by row_senses.
 
         Returns
         -------

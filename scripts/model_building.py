@@ -149,7 +149,7 @@ for d in datasets:
                             print('  Saved: %s.mat (dim=%d, eq=%d, ineq=%d)' % (
                                 mat_path, model.dim,
                                 int((model.row_senses == '=').sum()),
-                                int((model.row_senses == '>').sum()),
+                                int((model.row_senses != '=').sum()),
                             ))
                             add_files_to_zip(out_path,
                                              [os.path.join(model_dir, filename + '.mat')])

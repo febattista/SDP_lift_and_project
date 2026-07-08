@@ -296,7 +296,7 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
             if skip_func and skip_func(constr, i):
                 continue
 
-            # (x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> >= 0
+            # (x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> <= 0
             # Canonical A entries: A_{i,var} = constr[var]/2 for var != i (off-diag),
             #                      A_{i,i} accumulated with constr[i] (if in constr) + (-b)
             for var in constr:
@@ -316,7 +316,7 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
                 _i_ineq, _j_ineq, _d_ineq, l = push(
                     _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
-            # (1 - x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> >= rhs
+            # (1 - x_i)(a_j x - b) <= 0  lifts to  <A_cut, X> <= b
             for var in constr:
                 idx = mat_idx(i, var)
                 _i_ineq.append(idx)
@@ -340,7 +340,7 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
 
     if lift_bounds:
         for i, j in itertools.combinations(range(1, n + 1), 2):
-            # X_{ij} - X_{ii} <= 0  lifts to  <A, X> >= 0
+            # X_{ij} - X_{ii} <= 0  lifts to  <A, X> <= 0
             # Canonical: A_{i,i} = -1, A_{i,j} = 0.5 (off-diagonal, i > j assumed)
             ii, jj = max(i, j), min(i, j)
             idx = mat_idx(ii, ii)
@@ -354,7 +354,7 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
                 _i_ineq, _j_ineq, _d_ineq, l = push(
                     _i_ineq, _j_ineq, _d_ineq, _Bt, step, packed_dim)
 
-            # X_{ii} + X_{jj} - X_{ij} >= 1
+            # X_{ii} + X_{jj} - X_{ij} <= 1
             # Canonical: A_{i,i} = 1, A_{j,j} = 1, A_{i,j} = -0.5
             idx = mat_idx(ii, ii)
             _i_ineq.append(idx); _j_ineq.append(l); _d_ineq.append(1.)
@@ -405,7 +405,7 @@ def _compute_m_plus_model(path_to_file, step=100000, lift_bounds=True, skip_func
     num_rows = m_eq + m_ineq
 
     row_rhs    = np.concatenate([np.array(_b), np.array(_u)])
-    row_senses = np.array(['='] * m_eq + ['>'] * m_ineq, dtype='U1')
+    row_senses = np.array(['='] * m_eq + ['<'] * m_ineq, dtype='U1')
 
     return SDPModel(
         dim=dim, n=n, num_rows=num_rows,
@@ -447,7 +447,7 @@ def m_plus_lifting(filename, model_out_dir='', work_dir='', step=100000,
 
     elapsed = time.time() - start
     eq_rows   = int((model.row_senses == '=').sum())
-    ineq_rows = int((model.row_senses == '>').sum())
+    ineq_rows = int((model.row_senses != '=').sum())
     print('Finished! Total time: %.2f' % elapsed)
     print('Order of the Matrix Variable: %d' % model.dim)
     print('Number of Equalities: %d' % eq_rows)
@@ -529,8 +529,8 @@ def Theta_SDP(G, step=10000):
 def Theta_plus_SDP(G, step=10000):
     """Build and return the Theta+ SDP for graph G as a canonical SDPModel.
 
-    Extends Theta with non-edge non-positivity inequalities:
-      - <A_ij, X> >= 0  (i.e. X_{i+1,j+1} <= 0)  for each non-edge (i, j)
+    Extends Theta with non-edge nonnegativity inequalities:
+      - <A_ij, X> >= 0  (i.e. X_{i+1,j+1} >= 0)  for each non-edge (i, j)
     followed by the same equality constraints as Theta_SDP.
 
     Use model.write_sdpnal_mat(path) to save a SDPNAL+ .mat file, or
