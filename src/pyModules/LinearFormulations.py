@@ -1,6 +1,13 @@
 # Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
 # SPDX-License-Identifier: GPL-3.0-or-later
 # LP relaxation formulations for the Maximum Stable Set Problem using Gurobi.
+#
+# Indexing conventions
+# --------------------
+# LP variables are named x[1]..x[n]: graph node i (0-based, see Graphs.py)
+# becomes variable x[i+1]. The coefficient dicts returned by compute_gamma /
+# compute_theta / compute_alpha — and their JSON caches in coeff_theta/ and
+# coeff_alpha/ — are keyed by the 0-based node.
 
 import os, json, subprocess, time
 import gurobipy as gb
@@ -38,6 +45,7 @@ def FRAC(G, model_name, dir_path='', write_lp=True):
     """
     path = os.path.join(dir_path, model_name + '.lp')
     frac = gb.Model()
+    # 0-based graph node i -> 1-based LP variable x[i+1] (module convention)
     x = frac.addVars([i+1 for i in G.nodes()], vtype=gb.GRB.BINARY, name='x', lb=0.0, ub=1.0)
     frac.setObjective(x.sum(), gb.GRB.MAXIMIZE)
     k = 0
@@ -117,6 +125,7 @@ def NOD(G, model_name, coeff, dir_path=''):
 
     for i in G.nodes():
         neighbors = [j+1 for j in G.neighbors(i)]
+        # coeff is keyed by the 0-based node i; the LP variable is x[i+1]
         nod.addConstr(x.sum(neighbors) + coeff[i]*x[i + 1] <= coeff[i], name='nod' + str(i + 1))
 
     nod.update()

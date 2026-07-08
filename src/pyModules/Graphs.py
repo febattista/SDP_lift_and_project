@@ -1,6 +1,16 @@
 # Copyright (C) 2024 Federico Battista, Fabrizio Rossi, Stefano Smriglio
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Graph generation, I/O utilities, and clique cover algorithms.
+#
+# Indexing conventions
+# --------------------
+# Graphs are 0-based: nodes are 0..n-1 (networkx native labeling; every
+# generator and convert_node_labels_to_integers call returns 0-based).
+# DIMACS .stb files are 1-based; read_graph_from_dimacs and
+# write_graph_to_dimacs convert at that boundary and nowhere else.
+# Graph node i corresponds to LP variable x[i+1]
+# (LinearFormulations.py) and to SDP matrix index i+1 — index 0 of the SDP
+# matrix is the homogenization row/column (see SDPLifting.py).
 
 import networkx as nx
 import scipy.io as io
@@ -175,6 +185,7 @@ def write_graph_to_dimacs(G, path):
     with open(path, "w") as f:
         f.write("p edge {} {}\n".format(G.number_of_nodes(), G.number_of_edges()))
         for u, v in G.edges():
+            # 0-based graph nodes -> 1-based DIMACS ids
             f.write("e {} {}\n".format(u + 1, v + 1))
 
 
@@ -190,6 +201,7 @@ def read_graph_from_dimacs(path):
                     n, m = re.split(r'\s+', line)[2:4]
                     continue
                 edge = re.split(r'\s+', line)
+                # 1-based DIMACS ids -> 0-based graph nodes
                 edge = int(edge[1]) - 1, int(edge[2]) - 1
                 edges.append(edge)
     except IOError:
@@ -227,5 +239,6 @@ def read_alpha_from_lp(filename):
             match = re.findall(pattern, line)
             if match:
                 match = match[0].split(' ')
+                # 1-based LP variable name x<i> -> 0-based graph node key
                 alphas[int(match[1][1:]) - 1] = int(match[0])
     return alphas

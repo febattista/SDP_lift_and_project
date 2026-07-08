@@ -27,6 +27,19 @@ from tqdm import tqdm
         model.to_sdpnal()          -- returns dict suitable for SDPNAL+
         model.to_adal()            -- returns dict suitable for the internal ADMM solver
         model.write_sdpnal_mat()   -- saves a SDPNAL+ .mat file
+
+    Indexing conventions
+    --------------------
+    In the (n+1) x (n+1) SDP matrix variable Y, index 0 is the homogenization
+    row/column and graph node i (0-based, see Graphs.py) lives at index i+1,
+    i.e. x_i = Y[i+1, i+1].
+
+        m_plus_lifting() parses an LP file whose variables x[1]..x[n] are
+        already 1-based, so it passes them to mat_idx(i, var) with no shift —
+        the graph itself never enters the M+ builder.
+
+        Theta_SDP() / Theta_plus_SDP() build from a 0-based networkx graph,
+        hence the mat_idx(i + 1, j + 1) shifts in their constraint loops.
 """
 
 
@@ -488,6 +501,7 @@ def Theta_SDP(G, step=10000):
     p = 0
 
     for i, j in G.edges():
+        # graph nodes are 0-based; +1 skips the homogenization index 0
         ii, jj = max(i, j), min(i, j)
         _i.append(mat_idx(ii + 1, jj + 1)); _j.append(p); _d.append(0.5)
         _b.append(0.)
@@ -558,6 +572,7 @@ def Theta_plus_SDP(G, step=10000):
     l = 0
 
     for i, j in complement_edges:
+        # graph nodes are 0-based; +1 skips the homogenization index 0
         ii, jj = max(i, j), min(i, j)
         _ib.append(mat_idx(ii + 1, jj + 1)); _jb.append(l); _db.append(0.5)
         _u.append(0.)
