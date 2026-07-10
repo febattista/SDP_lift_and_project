@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from parameters import (
     datasets, results_datasets,
     MAKE_COEFFICIENTS, MAKE_LP_FORMULATION, MAKE_SDP_MODELS, MAKE_TH_PLUS_MODELS,
-    DO_SPLIT, ADMM_SOLVER_THREADS, SDP_LIFTING_STEP,
+    DO_SPLIT, ADMM_SOLVER_THREADS, SDP_LIFTING_STEP, LIFT_MODE,
     ADMM_SOLVER_TOL, ADMM_SOLVER_MAX_ITER, ADMM_SOLVER_TIMELIMIT, ADMM_SOLVER_DEBUG,
     USE_CLIQUE_COVER_FROM_LETCHFORD_ET_AL,
 )
@@ -169,8 +169,10 @@ for d in datasets:
                                 model_out_dir=model_dir,
                                 work_dir=lp_dir,
                                 step=SDP_LIFTING_STEP,
+                                lift_mode=LIFT_MODE,
                                 skip_func=(lovasz_schrijver_filter
-                                           if 'edge' in instance.name else None),
+                                           if 'edge' in instance.name
+                                           and LIFT_MODE == 'ls' else None),
                                 do_split=DO_SPLIT,
                             )
                             files_to_zip = [

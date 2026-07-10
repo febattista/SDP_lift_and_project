@@ -76,8 +76,14 @@ ADMM_SOLVER_DEBUG = False
 ADMM_SOLVER_THREADS = 20       # Number of threads for parallel BLAS operations
 
 # SDPLifting.py parameters
-SDP_LIFTING_STEP = 100000      # Batch size for building the sparse inequality
-                                # constraint matrix in m_plus_lifting
+SDP_LIFTING_STEP = 100000      # Pair-chunk size bounding peak memory while
+                                # building the lifted constraints in m_plus_lifting
+
+LIFT_MODE = 'ls'                # 'ls' = classic Lovasz-Schrijver pairs (cut
+                                # classes 1-4); 'kk' = full M_+(K,K), all
+                                # distinct constraint pairs.  The MATLAB
+                                # cutting-plane pipeline supports 'ls' only
+                                # ('kk' models carry no cut_classes)
 
 # -----------------------------------------------------------------
 #   MATLAB PARAMETERS

@@ -35,7 +35,7 @@ from pyModules.SDPLifting import Theta_SDP, Theta_plus_SDP, _compute_m_plus_mode
 # Model construction
 # ---------------------------------------------------------------------------
 
-def build_model(path, formulation):
+def build_model(path, formulation, lift_mode='ls'):
     ext = os.path.splitext(path)[1].lower()
 
     if ext == '.stb':
@@ -51,7 +51,8 @@ def build_model(path, formulation):
         if formulation == 'theta' or formulation == 'theta_plus':
             sys.exit("Theta / Theta+ require a .stb graph file, not an LP file.")
         print('LP file     : %s' % os.path.basename(path))
-        return _compute_m_plus_model(path)
+        print('Lift mode   : %s' % lift_mode)
+        return _compute_m_plus_model(path, lift_mode=lift_mode)
 
     else:
         sys.exit("Unsupported file extension %r.  Expected .stb or .lp." % ext)
@@ -63,12 +64,13 @@ def build_model(path, formulation):
 
 def solve(model, verbose=False):
     d = model.to_mosek()
+    num_rows = d['num_rows']   # includes rows converted from the L/U bounds
 
     with mosek.Task() as task:
         if not verbose:
             task.putintparam(mosek.iparam.log, 0)
 
-        task.appendcons(model.num_rows)
+        task.appendcons(num_rows)
         task.appendbarvars([d['dim']])
 
         # Objective matrix C (lower-triangular triplets)
@@ -97,7 +99,7 @@ def solve(model, verbose=False):
         bk  = [mosek.boundkey.fx if s == '=' else
                mosek.boundkey.lo if s == '>' else
                mosek.boundkey.up for s in d['row_senses']]
-        task.putconboundlist(list(range(model.num_rows)), bk, blc, buc)
+        task.putconboundlist(list(range(num_rows)), bk, blc, buc)
 
         # Objective sense
         task.putobjsense(
@@ -137,6 +139,9 @@ def main():
                         default=None,
                         help=('SDP formulation.  Defaults to theta_plus for .stb '
                               'files and m_plus for .lp files.'))
+    parser.add_argument('--lift-mode', choices=['ls', 'kk'], default='ls',
+                        help="M+ pair selection for .lp inputs: 'ls' (classic "
+                             "operator, default) or 'kk' (full M_+(K,K)).")
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Print MOSEK solver log.')
     args = parser.parse_args()
@@ -151,7 +156,7 @@ def main():
     print('Formulation : %s' % formulation)
 
     t0 = time.time()
-    model = build_model(path, formulation)
+    model = build_model(path, formulation, lift_mode=args.lift_mode)
     t_build = time.time() - t0
 
     eq_rows   = int((model.row_senses == '=').sum())
