@@ -9,6 +9,11 @@ crossover (see docs/plans/kk-lp-gurobi-solving.md for the measurements
 behind that choice). The 7200 s time limit is a Gurobi parameter, so it
 bounds the solve phase only; build time is recorded separately.
 
+For comparison, each instance also gets one 'th+' task: the Theta+ SDP
+built from the .stb graph (Theta_plus_SDP) and solved with MOSEK under
+the same time limit. Its bound lands in the same CSV (relax='th+',
+bound in the lp_bound column) so LP and SDP bounds sit side by side.
+
 Instance selection (the manifest) lives in this file: smallDIMACS (all),
 a DIMACS subset, and Random n in {150, 175, 200}; relaxations nod_gamma /
 nod_theta / nod_alpha / edge / cov. Models whose estimated size exceeds
@@ -32,7 +37,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from pyModules.SDPLifting import _compute_m_plus_model, read_constr_from_lp
+from pyModules.SDPLifting import (_compute_m_plus_model, read_constr_from_lp,
+                                  Theta_plus_SDP)
 from pyModules.Graphs import read_graph_from_dimacs
 
 DATA = os.path.join('..', 'data', 'StableSets')
@@ -141,6 +147,58 @@ def solve_barrier(model, time_limit, threads, log_file):
                 simplex_iters=int(lp.IterCount))
 
 
+def solve_theta_plus(model, time_limit, threads, log_file):
+    """Solve a Theta+ SDPModel with MOSEK; result dict as solve_barrier's."""
+    import mosek
+
+    d = model.to_mosek()
+    num_rows = d['num_rows']   # includes rows converted from the L=0 bound
+
+    with open(log_file, 'w') as lf, mosek.Task() as task:
+        task.set_Stream(mosek.streamtype.log, lf.write)
+        task.putdouparam(mosek.dparam.optimizer_max_time, time_limit)
+        task.putintparam(mosek.iparam.num_threads, threads)
+
+        task.appendcons(num_rows)
+        task.appendbarvars([d['dim']])
+        n_c = len(d['C_val'])
+        if n_c > 0:
+            task.putbarcblocktriplet([0] * n_c, d['C_rows'].tolist(),
+                                     d['C_cols'].tolist(), d['C_val'].tolist())
+        n_a = len(d['A_val'])
+        if n_a > 0:
+            task.putbarablocktriplet(d['A_cons'].tolist(), [0] * n_a,
+                                     d['A_rows'].tolist(), d['A_cols'].tolist(),
+                                     d['A_val'].tolist())
+        bk = [mosek.boundkey.fx if s == '=' else
+              mosek.boundkey.lo if s == '>' else
+              mosek.boundkey.up for s in d['row_senses']]
+        task.putconboundlist(list(range(num_rows)), bk,
+                             d['blc'].tolist(), d['buc'].tolist())
+        task.putobjsense(mosek.objsense.minimize if d['obj_sense'] > 0
+                         else mosek.objsense.maximize)
+
+        t0 = time.time()
+        trm = task.optimize()
+        solve_time = time.time() - t0
+
+        sol_sta = task.getsolsta(mosek.soltype.itr)
+        if sol_sta == mosek.solsta.optimal:
+            status = 'optimal'
+        elif trm == mosek.rescode.trm_max_time:
+            status = 'timelimit'
+        else:
+            status = str(sol_sta).replace('solsta.', '')
+        try:
+            objval = task.getprimalobj(mosek.soltype.itr)
+        except mosek.Error:
+            objval = float('nan')
+        iters = task.getintinf(mosek.iinfitem.intpnt_iter)
+
+    return dict(status=status, objval=objval, solve_time=solve_time,
+                bar_iters=iters, simplex_iters='')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--time-limit', type=float, default=7200.,
@@ -155,8 +213,9 @@ def main():
                          '(default 8e8, ~10 GB peak)')
     ap.add_argument('--only', default=None,
                     help='process only instances whose name contains this')
-    ap.add_argument('--relax', default=None, choices=RELAXATIONS,
-                    help='process only this relaxation')
+    ap.add_argument('--relax', default=None, choices=RELAXATIONS + ('th+',),
+                    help="process only this relaxation ('th+' = the MOSEK "
+                         'Theta+ comparison)')
     ap.add_argument('--dry-run', action='store_true',
                     help='print the size map (build/skip decisions), no solves')
     args = ap.parse_args()
@@ -193,6 +252,17 @@ def main():
             n, m, est_rows, est_nnz = estimate(lp_path)
             tasks.append((est_nnz, dataset, name, relax, lp_path,
                           n, m, est_rows))
+        # Theta+ comparison: one SDP per instance, from the graph
+        if args.relax in (None, 'th+') and (name, 'th+') not in done:
+            stb_path = os.path.join(DATA, dataset, 'graphs', name + '.stb')
+            if not os.path.exists(stb_path):
+                print('MISSING %s' % stb_path)
+                continue
+            G = read_graph_from_dimacs(stb_path)
+            n = G.number_of_nodes()
+            est_rows = n * (n - 1) // 2 + n + 1   # edge/non-edge + node + trace
+            tasks.append((est_rows + n, dataset, name, 'th+', stb_path,
+                          n, '-', est_rows))
     tasks.sort()
     print('%d tasks (rows cap %.1e, nnz cap %.1e)'
           % (len(tasks), args.rows_cap, args.nnz_cap))
@@ -208,7 +278,7 @@ def main():
     for est_nnz, dataset, name, relax, lp_path, n, m, est_rows in tasks:
         oversize = est_rows > args.rows_cap or est_nnz > args.nnz_cap
         if args.dry_run:
-            print('%-6s %-12s %-24s %-9s n=%-4d m=%-6d est_rows=%.2e est_nnz=%.2e'
+            print('%-6s %-12s %-24s %-9s n=%-4d m=%-6s est_rows=%.2e est_nnz=%.2e'
                   % ('SKIP' if oversize else 'build', dataset, name, relax,
                      n, m, est_rows, est_nnz))
             continue
@@ -225,22 +295,31 @@ def main():
             print('SKIP  %-24s %-9s est_rows=%.2e est_nnz=%.2e'
                   % (name, relax, est_rows, est_nnz), flush=True)
         else:
-            t0 = time.time()
-            model = _compute_m_plus_model(lp_path, lift_mode='kk',
-                                          include_squares=True)
-            build_time = time.time() - t0
-
-            row_nnz = np.diff(model.A.indptr)
-            # graph density metric
-            stb = os.path.join(DATA, dataset, 'graphs', name + '.stb')
+            log_file = os.path.join(log_dir, '%s_%s.log' % (name, relax))
             edges = gd = ''
-            if os.path.exists(stb):
-                G = read_graph_from_dimacs(stb)
+            t0 = time.time()
+            if relax == 'th+':
+                G = read_graph_from_dimacs(lp_path)   # th+ tasks carry the .stb path
+                model = Theta_plus_SDP(G)
+                build_time = time.time() - t0
                 edges = G.number_of_edges()
                 gd = 2. * edges / (n * (n - 1))
+                res = solve_theta_plus(model, args.time_limit, args.threads,
+                                       log_file)
+            else:
+                model = _compute_m_plus_model(lp_path, lift_mode='kk',
+                                              include_squares=True)
+                build_time = time.time() - t0
+                # graph density metric
+                stb = os.path.join(DATA, dataset, 'graphs', name + '.stb')
+                if os.path.exists(stb):
+                    G = read_graph_from_dimacs(stb)
+                    edges = G.number_of_edges()
+                    gd = 2. * edges / (n * (n - 1))
+                res = solve_barrier(model, args.time_limit, args.threads,
+                                    log_file)
 
-            res = solve_barrier(model, args.time_limit, args.threads,
-                                os.path.join(log_dir, '%s_%s.log' % (name, relax)))
+            row_nnz = np.diff(model.A.indptr)
             lp_bound = -res['objval'] if res['status'] == 'optimal' else ''
             rel_gap = ''
             if alpha and lp_bound != '':

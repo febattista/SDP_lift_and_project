@@ -16,3 +16,6 @@ ThirdParty/
 
 # results directory
 results/
+
+*.md
+!README.md
