@@ -16,6 +16,7 @@ class SDPModel:
         min/max  <C, X>
         s.t.     <A_i, X>  ['<' | '>' | '=']  row_rhs_i,  i = 1..num_rows
                  X >= 0 (PSD)
+                 L <= X <= U (elementwise, optional)
 
     All constraint matrices are stored in canonical lower-triangular form:
     A[i, mat_idx(j,k)] holds the symmetric entry (A_i)_{jk} for j >= k. 
@@ -37,7 +38,14 @@ class SDPModel:
     row_rhs:    np.ndarray = None  # (num_rows,)
     row_senses: np.ndarray = None  # (num_rows,)  dtype='U1': '<', '>', '='
 
-    cut_classes: np.ndarray = None  # class labels aligned with '<' rows (M+ only)
+    # Elementwise bounds on X: None (absent), a scalar broadcast to every
+    # entry, or a (dim x dim) array with -inf/+inf on unbounded entries.
+    # SDPNAL+ takes them natively (L <= X <= U); other exports convert
+    # (to_mosek: explicit rows, to_lp: variable bounds).
+    L:          object = None
+    U:          object = None
+
+    cut_classes: np.ndarray = None  # class labels aligned with '<' rows (M+ 'ls' mode only; None in 'kk' mode)
     col_names:  list = field(default_factory=list)
     row_names:  list = field(default_factory=list)
 
@@ -57,6 +65,35 @@ class SDPModel:
         for i in range(dim):
             s[i * (i + 1) // 2 + i] = 1.0   # mat_idx(i, i) = i*(i+1)//2 + i
         return s
+
+    def _lp_scale(self):
+        """Build the LP scaling vector: 2 for off-diagonal, 1 for diagonal.
+
+        Converts canonical packed rows to plain linear coefficients over the
+        scalar variables y_k = X_{ij}, since
+        <A, X> = sum_j A_jj X_jj + 2 * sum_{j>k} A_jk X_jk.
+        """
+        s = np.full(self.packed_dim, 2.0)
+        for i in range(self.dim):
+            s[i * (i + 1) // 2 + i] = 1.0   # mat_idx(i, i) = i*(i+1)//2 + i
+        return s
+
+    def _bounds_packed(self):
+        """Broadcast L/U to packed arrays (lb, ub) over the packed entries.
+
+        None -> -inf/+inf everywhere; scalar -> constant; (dim x dim)
+        array-like -> entry (i, j) with i >= j in packed order.
+        """
+        def expand(bound, fill):
+            if bound is None:
+                return np.full(self.packed_dim, fill)
+            b = np.asarray(bound, dtype=float)
+            if b.ndim == 0:
+                return np.full(self.packed_dim, float(b))
+            pi, pj = self._packed_ij()
+            return b[pi, pj]
+
+        return expand(self.L, -np.inf), expand(self.U, np.inf)
 
     def _C_full(self):
         """Unpack lower-tri C to a full (dim x dim) symmetric sparse matrix."""
@@ -91,9 +128,14 @@ class SDPModel:
         and Bt. C is returned as a full (dim x dim) symmetric matrix (no extra
         scaling: SDPNAL+ reads C as a plain matrix and computes trace(C X) directly).
 
+        Elementwise bounds are passed through as-is (scalar or matrix):
+        SDPNAL+ accepts L <= X <= U natively, so they are not converted
+        into inequality rows.
+
         Returns
         -------
-        dict with keys: At, b, Bt (or None), u (or None), C, s, cut_classes.
+        dict with keys: At, b, Bt (or None), u (or None), C, s, L, U,
+        cut_classes.
         """
         s = self._svec_scale()
 
@@ -114,6 +156,8 @@ class SDPModel:
             'u':  u,
             'C':  self._C_full(),
             's':  float(self.dim),
+            'L':  self.L,
+            'U':  self.U,
             'cut_classes': self.cut_classes,
         }
 
@@ -127,6 +171,12 @@ class SDPModel:
         an equality and ignores mleq, so only equality-only models (e.g.
         Theta_SDP) may be passed to it. mleq is exported for ADAL-format
         compatibility; inequality rows keep the direction given by row_senses.
+
+        Elementwise bounds: ADMM_3b always enforces X >= 0, which is exactly 
+        L = 0 with U absent — such bounds need no conversion. 
+        Any other finite bound (L_ij != 0 or a finite U_ij) becomes an explicit 
+        inequality row in '<' form (lower bounds negated), placed after the 
+        model's inequality rows and counted in mleq.
 
         Returns
         -------
@@ -157,6 +207,27 @@ class SDPModel:
             (di, (ri, ci)), shape=(nrows, dim * dim)
         ).tocsr()
 
+        # Bounds differing from the built-in X >= 0 become '<' rows
+        lb, ub = self._bounds_packed()
+        lo = np.where(np.isfinite(lb) & (lb != 0.))[0]
+        up = np.where(np.isfinite(ub))[0]
+        if len(lo) or len(up):
+            k    = np.concatenate([lo, up])
+            sign = np.concatenate([np.full(len(lo), -1.), np.ones(len(up))])
+            brhs = np.concatenate([-lb[lo], ub[up]])
+            i, j = pi[k], pj[k]
+            off  = i != j
+            r = np.concatenate([np.arange(len(k)), np.where(off)[0]])
+            c = np.concatenate([i * dim + j, (j * dim + i)[off]])
+            v = np.concatenate([np.where(off, 0.5, 1.0) * sign,
+                                (0.5 * sign)[off]])
+            B_full = sparse.coo_matrix(
+                (v, (r, c)), shape=(len(k), dim * dim)).tocsr()
+            A_full = sparse.vstack(
+                [A_full[:mleq], B_full, A_full[mleq:]], format='csr')
+            rhs   = np.vstack([rhs[:mleq], brhs.reshape(-1, 1), rhs[mleq:]])
+            mleq += len(k)
+
         return {
             'A':    A_full,
             'b':    rhs,
@@ -174,12 +245,19 @@ class SDPModel:
             trace(A X) = sum_j val_jj X_jj + 2 * sum_{j>k} val_jk X_jk
         which is the canonical inner product.
 
+        Elementwise bounds L/U: MOSEK bar-variables cannot carry entry
+        bounds (the putvarbound* family only addresses scalar variables),
+        so every finite bound is converted into an explicit row
+        <E_ij, X> >= L_ij (sense '>') or <= U_ij (sense '<'), appended
+        after the model rows — num_rows in the returned dict counts them
+        and may exceed self.num_rows.
+
         Typical usage with the MOSEK Python API:
 
             import mosek
             d = model.to_mosek()
             with mosek.Task() as task:
-                task.appendcons(model.num_rows)
+                task.appendcons(d['num_rows'])
                 task.appendbarvars([d['dim']])
 
                 n_c = len(d['C_val'])
@@ -193,7 +271,7 @@ class SDPModel:
                 bk = [mosek.boundkey.fx if s == '=' else
                       mosek.boundkey.lo if s == '>' else
                       mosek.boundkey.up for s in d['row_senses']]
-                task.putconboundlist(range(model.num_rows), bk, d['blc'], d['buc'])
+                task.putconboundlist(range(d['num_rows']), bk, d['blc'], d['buc'])
 
                 sense = (mosek.objsense.minimize if d['obj_sense'] > 0
                          else mosek.objsense.maximize)
@@ -205,6 +283,7 @@ class SDPModel:
         dict with keys:
 
         dim        : int, dimension of the PSD variable
+        num_rows   : int, total constraints including converted bound rows
         obj_sense  : float, 1.0 = minimize, -1.0 = maximize
         C_rows     : int32 array, row indices of objective lower-tri triplets (row >= col)
         C_cols     : int32 array, col indices of objective lower-tri triplets
@@ -236,8 +315,32 @@ class SDPModel:
         blc = np.where(self.row_senses != '<', self.row_rhs, -np.inf)
         buc = np.where(self.row_senses != '>', self.row_rhs,  np.inf)
 
+        # Elementwise bounds -> explicit rows (0.5 off-diagonal under the
+        # canonical implicit x2, so each row's value is exactly X_ij)
+        row_senses = self.row_senses
+        num_rows   = self.num_rows
+        lb, ub = self._bounds_packed()
+        for vals, sense in ((lb, '>'), (ub, '<')):
+            k = np.where(np.isfinite(vals))[0]
+            if len(k) == 0:
+                continue
+            A_cons = np.concatenate(
+                [A_cons, num_rows + np.arange(len(k))]).astype(np.int32)
+            A_rows = np.concatenate([A_rows, pi[k]]).astype(np.int32)
+            A_cols = np.concatenate([A_cols, pj[k]]).astype(np.int32)
+            A_val  = np.concatenate(
+                [A_val, np.where(pi[k] == pj[k], 1.0, 0.5)])
+            row_senses = np.concatenate(
+                [row_senses, np.full(len(k), sense, dtype='U1')])
+            blc = np.concatenate(
+                [blc, vals[k] if sense == '>' else np.full(len(k), -np.inf)])
+            buc = np.concatenate(
+                [buc, vals[k] if sense == '<' else np.full(len(k), np.inf)])
+            num_rows += len(k)
+
         return {
             'dim':        self.dim,
+            'num_rows':   num_rows,
             'obj_sense':  self.obj_sense,
             'C_rows':     C_rows,
             'C_cols':     C_cols,
@@ -246,13 +349,78 @@ class SDPModel:
             'A_rows':     A_rows,
             'A_cols':     A_cols,
             'A_val':      A_val,
-            'row_senses': self.row_senses,
+            'row_senses': row_senses,
             'blc':        blc,
             'buc':        buc,
         }
 
+    def to_lp(self):
+        """Convert to a solver-agnostic LP dict (the M-operator relaxation).
+
+        Drops the PSD requirement on X: the packed lower-triangular entries
+        become scalar LP variables y_k = X_{ij}, k = mat_idx(i, j), and
+        each canonical row turns into a plain linear constraint via the
+        off-diagonal x2 scaling of _lp_scale().  Any LP solver front-end can
+        be assembled from the returned dict (see scripts/solve_gurobi.py);
+        no solver is imported here.
+
+        Elementwise bounds L/U map directly onto the variable bounds lb/ub
+        (the packed entries are genuine scalar variables here, so no
+        inequality rows are needed).
+
+        Note: for the LP to be M(K,K) proper, the model must be built with
+        include_squares=True — the squared-constraint products are implied
+        by PSD but not by the pairwise products alone.
+
+        Returns
+        -------
+        dict with keys:
+
+        num_cols   : int, number of LP variables (= packed_dim)
+        num_rows   : int, number of linear constraints
+        obj        : float array (num_cols,), objective coefficients
+        obj_sense  : float, 1.0 = minimize, -1.0 = maximize
+        obj_offset : float, constant objective offset
+        A          : (num_rows x num_cols) CSR constraint matrix
+        rhs        : float array (num_rows,)
+        senses     : char array (num_rows,), '<', '>', or '='
+        lb, ub     : float arrays (num_cols,), variable bounds
+        col_names  : list of 'X_i_j' strings, packed order
+        row_names  : list (may be empty)
+        """
+        s = self._lp_scale()
+
+        obj = np.zeros(self.packed_dim)
+        C_coo = self.C.tocoo()   # stored lower-tri: row >= col
+        k = C_coo.row * (C_coo.row + 1) // 2 + C_coo.col
+        obj[k] = C_coo.data * s[k]
+
+        pi, pj = self._packed_ij()
+        col_names = ['X_%d_%d' % (i, j) for i, j in zip(pi, pj)]
+
+        lb, ub = self._bounds_packed()
+
+        return {
+            'num_cols':   self.packed_dim,
+            'num_rows':   self.num_rows,
+            'obj':        obj,
+            'obj_sense':  self.obj_sense,
+            'obj_offset': self.obj_offset,
+            'A':          self.A.multiply(s).tocsr(),
+            'rhs':        self.row_rhs.copy(),
+            'senses':     self.row_senses.copy(),
+            'lb':         lb,
+            'ub':         ub,
+            'col_names':  col_names,
+            'row_names':  list(self.row_names),
+        }
+
     def write_sdpnal_mat(self, out_path, do_split=False):
         """Serialize to SDPNAL+ .mat file(s).
+
+        Elementwise bounds L/U are written as-is when set (SDPNAL+ takes
+        them natively as bounds on the matrix variable) and omitted when
+        None.
 
         Parameters
         ----------
@@ -265,7 +433,13 @@ class SDPModel:
         C   = d['C']
         cut_classes = d['cut_classes']
 
-        base = {'At': At, 'b': b, 'L': 0., 'C': C, 's': float(self.n + 1)}
+        base = {'At': At, 'b': b}
+        if self.L is not None:
+            base['L'] = self.L
+        if self.U is not None:
+            base['U'] = self.U
+        base['C'] = C
+        base['s'] = float(self.n + 1)
         if Bt is not None:
             base['u'] = u
         if cut_classes is not None:
