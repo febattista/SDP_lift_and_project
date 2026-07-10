@@ -216,6 +216,8 @@ def main():
     ap.add_argument('--relax', default=None, choices=RELAXATIONS + ('th+',),
                     help="process only this relaxation ('th+' = the MOSEK "
                          'Theta+ comparison)')
+    ap.add_argument('--skip-thplus', action='store_true',
+                    help='skip the MOSEK Theta+ comparison tasks')
     ap.add_argument('--dry-run', action='store_true',
                     help='print the size map (build/skip decisions), no solves')
     args = ap.parse_args()
@@ -253,7 +255,8 @@ def main():
             tasks.append((est_nnz, dataset, name, relax, lp_path,
                           n, m, est_rows))
         # Theta+ comparison: one SDP per instance, from the graph
-        if args.relax in (None, 'th+') and (name, 'th+') not in done:
+        if (not args.skip_thplus and args.relax in (None, 'th+')
+                and (name, 'th+') not in done):
             stb_path = os.path.join(DATA, dataset, 'graphs', name + '.stb')
             if not os.path.exists(stb_path):
                 print('MISSING %s' % stb_path)
