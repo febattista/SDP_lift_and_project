@@ -23,6 +23,7 @@ from pyModules.Graphs import read_graph_from_dimacs
 from pyModules.SDPLifting import m_plus_lifting, Theta_plus_SDP, lovasz_schrijver_filter
 from pyModules.LinearFormulations import (
     FRAC, QSTABC, NOD, compute_gamma, compute_theta, compute_alpha,
+    check_nodal_coefficients,
 )
 
 
@@ -86,9 +87,10 @@ for d in datasets:
                     graphname = os.path.splitext(instance.name)[0]
                     print("  > %s" % graphname)
                     G = read_graph_from_dimacs(os.path.join(graph_dir, instance.name))
-                    compute_theta(G, graphname, model_out_dir=coeff_theta_dir,
-                                  use_patience=True, options=admm_options)
-                    compute_alpha(G, graphname, model_out_dir=coeff_alpha_dir)
+                    theta = compute_theta(G, graphname, model_out_dir=coeff_theta_dir,
+                                          use_patience=True, options=admm_options)
+                    alpha = compute_alpha(G, graphname, model_out_dir=coeff_alpha_dir)
+                    check_nodal_coefficients(theta, alpha, graphname)
 
     # ------------------------------------------------------------------
     # PHASE 2: LP formulation
@@ -107,15 +109,17 @@ for d in datasets:
                     print("  > %s" % graphname)
                     G = read_graph_from_dimacs(os.path.join(graph_dir, instance.name))
 
-                    gamma = compute_gamma(G)
-                    NOD(G, graphname + '_nod_gamma', gamma, lp_dir)
-
                     theta = compute_theta(G, graphname,
                                          model_out_dir=coeff_theta_dir,
                                          use_patience=True, options=admm_options)
-                    NOD(G, graphname + '_nod_theta', theta, lp_dir)
-
                     alpha = compute_alpha(G, graphname, model_out_dir=coeff_alpha_dir)
+                    # Validate before any NOD LP is written: theta < alpha
+                    # means a bad cache and an invalid NOD_theta relaxation.
+                    check_nodal_coefficients(theta, alpha, graphname)
+
+                    gamma = compute_gamma(G)
+                    NOD(G, graphname + '_nod_gamma', gamma, lp_dir)
+                    NOD(G, graphname + '_nod_theta', theta, lp_dir)
                     NOD(G, graphname + '_nod_alpha', alpha, lp_dir)
 
                     QSTABC(G, graphname + '_cov', dir_path=lp_dir,
