@@ -211,12 +211,24 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
     csv_path = os.path.join(RESULT_DIR, 'results_m_kk.csv')
 
+    # ------------------------------------------------------------------
+    # PHASE 1: Coefficient refresh (only with --refresh-coeffs)
+    # ------------------------------------------------------------------
+    # Recompute theta/alpha caches from scratch and regenerate the
+    # nod_theta/nod_alpha LP files for the selected instances
     refreshed = set()
     if args.refresh_coeffs:
         refreshed = refresh_coefficients(args.only)
         print('Refreshed coefficients + NOD LPs for %d instance(s)'
               % len(refreshed))
 
+    # ------------------------------------------------------------------
+    # PHASE 2: Resume state
+    # ------------------------------------------------------------------
+    # (instance, relax) pairs already in the results CSV are skipped, so
+    # the run can be resumed after a crash or extended incrementally.
+    # Rows solved before a coefficient refresh are stale: they are
+    # reported but never deleted automatically.
     done = set()
     if os.path.exists(csv_path) and not args.dry_run:
         with open(csv_path) as f:
@@ -230,9 +242,15 @@ def main():
                   'and will be skipped by resume; delete them from the CSV to '
                   're-solve: %s' % (len(stale), ', '.join(map(str, stale))))
 
+    # graph-level alpha values (aux_data csv), for the rel_gap column
     alphas = {ds: load_alpha(ds) for ds in ('smallDIMACS', 'DIMACS', 'Random')}
 
-    # gather tasks with size estimates, cheapest first so results land early
+    # ------------------------------------------------------------------
+    # PHASE 3: Task gathering with size estimates
+    # ------------------------------------------------------------------
+    # One task per (instance, relaxation) LP in the manifest, with the
+    # estimated lifted-model size; sorted cheapest first so results land
+    # early. Oversize models are kept as tasks and recorded as SKIP rows.
     tasks = []
     for dataset, name in manifest():
         if args.only and args.only not in name:
@@ -254,6 +272,7 @@ def main():
     print('%d tasks (rows cap %.1e, nnz cap %.1e)'
           % (len(tasks), args.rows_cap, args.nnz_cap))
 
+    # append to the results CSV (write the header only on first creation)
     new_file = not os.path.exists(csv_path)
     out = None
     if not args.dry_run:
@@ -262,6 +281,12 @@ def main():
         if new_file:
             writer.writeheader()
 
+    # ------------------------------------------------------------------
+    # PHASE 4: Build + solve (or dry-run size map)
+    # ------------------------------------------------------------------
+    # For each task: build the M+(K,K) lifting of the LP in memory, solve
+    # the M(K,K) LP with Gurobi barrier (no crossover), and append one
+    # CSV row. With --dry-run, only print the build/skip map.
     for est_nnz, dataset, name, relax, lp_path, n, m, est_rows in tasks:
         oversize = est_rows > args.rows_cap or est_nnz > args.nnz_cap
         if args.dry_run:
