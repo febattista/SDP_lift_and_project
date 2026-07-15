@@ -7,7 +7,8 @@ duplication, no .mat serialization) with lift_mode='kk' + squares, and
 solves the PSD-free LP via SDPModel.to_lp() using barrier without
 crossover (see docs/plans/kk-lp-gurobi-solving.md for the measurements
 behind that choice). The 7200 s time limit is a Gurobi parameter, so it
-bounds the solve phase only; build time is recorded separately.
+bounds the solve phase only; build time is recorded separately. Each
+lifted M(K,K) LP is also written to results/.../lp/ before solving.
 
 Instance selection (the manifest) lives in this file: smallDIMACS (all),
 a DIMACS subset, and Random n in {150, 175, 200}; relaxations nod_gamma /
@@ -90,6 +91,15 @@ def refresh_coefficients(only=None):
     """
     from pyModules.LinearFormulations import (NOD, compute_theta, compute_alpha,
                                               check_nodal_coefficients)
+    from parameters import (ADMM_SOLVER_TOL, ADMM_SOLVER_MAX_ITER,
+                            ADMM_SOLVER_TIMELIMIT, ADMM_SOLVER_DEBUG)
+    # Same ADMM options as model_building.py
+    admm_options = {
+        'tolerance': ADMM_SOLVER_TOL,
+        'max_iter':  ADMM_SOLVER_MAX_ITER,
+        'timelimit': ADMM_SOLVER_TIMELIMIT,
+        'debug':     ADMM_SOLVER_DEBUG,
+    }
     refreshed = set()
     for dataset, name in manifest():
         if only and only not in name:
@@ -101,10 +111,16 @@ def refresh_coefficients(only=None):
         G = read_graph_from_dimacs(stb_path)
         print('refresh %s/%s (n=%d)' % (dataset, name, G.number_of_nodes()),
               flush=True)
+        # compute_theta/compute_alpha write their JSON caches (and cliquer's
+        # temp .stb) with plain open(); they don't create the directory
+        theta_dir = os.path.join(DATA, dataset, 'coeff_theta')
+        alpha_dir = os.path.join(DATA, dataset, 'coeff_alpha')
+        os.makedirs(theta_dir, exist_ok=True)
+        os.makedirs(alpha_dir, exist_ok=True)
         theta = compute_theta(G, name, refresh=True, use_patience=True,
-                              model_out_dir=os.path.join(DATA, dataset, 'coeff_theta'))
+                              options=admm_options, model_out_dir=theta_dir)
         alpha = compute_alpha(G, name, refresh=True,
-                              model_out_dir=os.path.join(DATA, dataset, 'coeff_alpha'))
+                              model_out_dir=alpha_dir)
         check_nodal_coefficients(theta, alpha, name)
         lp_dir = os.path.join(DATA, dataset, 'lp')
         NOD(G, name + '_nod_theta', theta, lp_dir)
@@ -146,7 +162,7 @@ def estimate(lp_path):
     return n, len(lp_rows), est_rows, int(est_nnz)
 
 
-def solve_barrier(model, time_limit, threads, log_file):
+def solve_barrier(model, time_limit, threads, log_file, write_lp=None):
     import gurobipy as gp
     from gurobipy import GRB
 
@@ -159,12 +175,15 @@ def solve_barrier(model, time_limit, threads, log_file):
     lp.Params.TimeLimit = time_limit
     lp.Params.Threads = threads
 
-    y = lp.addMVar(d['num_cols'], lb=d['lb'], ub=d['ub'])
+    y = lp.addMVar(d['num_cols'], lb=d['lb'], ub=d['ub'], name='y')
     lp.setObjective(d['obj'] @ y, GRB.MINIMIZE)
     for sense in ('<', '>', '='):
         mask = d['senses'] == sense
         if mask.any():
             lp.addMConstr(d['A'][mask], y, sense, d['rhs'][mask])
+
+    if write_lp:
+        lp.write(write_lp)
 
     t0 = time.time()
     lp.optimize()
@@ -209,6 +228,10 @@ def main():
     os.makedirs(RESULT_DIR, exist_ok=True)
     log_dir = os.path.join(RESULT_DIR, 'gurobi_logs')
     os.makedirs(log_dir, exist_ok=True)
+    # lifted M(K,K) LPs are exported here; the source relaxation LPs stay
+    # in data/StableSets/<dataset>/lp
+    lp_out_dir = os.path.join(RESULT_DIR, 'lp')
+    os.makedirs(lp_out_dir, exist_ok=True)
     csv_path = os.path.join(RESULT_DIR, 'results_m_kk.csv')
 
     # ------------------------------------------------------------------
@@ -320,7 +343,9 @@ def main():
                 edges = G.number_of_edges()
                 gd = 2. * edges / (n * (n - 1))
             res = solve_barrier(model, args.time_limit, args.threads,
-                                log_file)
+                                log_file,
+                                write_lp=os.path.join(lp_out_dir,
+                                                      '%s_%s_m_kk.lp' % (name, relax)))
 
             row_nnz = np.diff(model.A.indptr)
             lp_bound = -res['objval'] if res['status'] == 'optimal' else ''
