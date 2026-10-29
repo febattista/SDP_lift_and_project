@@ -1,6 +1,8 @@
 # SDP Lift-and-Project software
 ### Paper: [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs12532--025--00298--8-blue)](https://doi.org/10.1007/s12532-025-00298-8)
 
+The code that produced the results in the paper is tagged [`v1.0-mpc2025`](https://github.com/febattista/SDP_lift_and_project/releases/tag/v1.0-mpc2025) (branch `paper-mpc2025`).
+
 This software package includes Python libraries for formulating Lov&aacute;sz and Schrijver's [1] Lift-and-Project semidefinite relaxations, along with MATLAB functions implementing a Cutting Plane method for solving them relying on a state-of-the-art Semidefinite Programming (SDP) solver [3]. Although this software is designed to be as general as possible, allowing the application of the Lov&aacute;sz and Schrijver's operator to any Linear Programming (LP) formulation, a strong emphasis has been placed on LP relaxations of the Maximum Stable Set Problem (MSSP).
 
 

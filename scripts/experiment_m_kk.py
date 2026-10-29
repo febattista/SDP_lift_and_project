@@ -5,8 +5,8 @@
 Builds each model in memory from the existing LP files (no dataset
 duplication, no .mat serialization) with lift_mode='kk' + squares, and
 solves the PSD-free LP via SDPModel.to_lp() using barrier without
-crossover (see docs/plans/kk-lp-gurobi-solving.md for the measurements
-behind that choice). The 7200 s time limit is a Gurobi parameter, so it
+crossover (measured to be faster than simplex on these models). The
+7200 s time limit is a Gurobi parameter, so it
 bounds the solve phase only; build time is recorded separately. Each
 lifted M(K,K) LP is also written to results/.../lp/ before solving.
 
